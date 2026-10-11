@@ -144,6 +144,7 @@ psql -d banksim_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261011000002_rl
 psql -d banksim_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261011000003_functions.sql
 psql -d banksim_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261011000004_chat.sql
 psql -d banksim_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261011000005_chat_client_id.sql
+psql -d banksim_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261011000006_firewall.sql
 psql -d banksim_test -v ON_ERROR_STOP=1 -f supabase/seed.sql
 psql -d banksim_test -v ON_ERROR_STOP=1 -f supabase/seed.sql   # twice = idempotency check
 psql -d banksim_test -v ON_ERROR_STOP=1 -f supabase/tests/verify.sql
