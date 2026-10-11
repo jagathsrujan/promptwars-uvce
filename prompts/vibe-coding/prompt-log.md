@@ -423,3 +423,39 @@ followed by `yes` (approve the plan and implement).
 **Files touched:** `README.md`, `prompts/vibe-coding/prompt-log.md`
 
 ---
+
+### 8. Credit Codex + Claude as repo contributors — 2026-10-11
+
+**Prompt:**
+
+```text
+is there a way to add codex and claude as contributors to larp in the github remote repo
+```
+
+followed by (with a screenshot of the repo's Contributors sidebar showing 2 contributors):
+
+```text
+yes i want to see them here
+```
+
+**What it produced:** Filled the empty `## Team` section in `README.md` (author + AI pair-programmers: CommandCodeBot, codex, claude with profile links + pointer to this log), then committed `README.md` + this log entry with `Co-authored-by` trailers using each bot's ID-based noreply address (`267193182+codex@users.noreply.github.com`, `81847+claude@users.noreply.github.com`) so GitHub links the commit to `github.com/codex` and `github.com/claude` and they join the Contributors sidebar (contributors graph counts co-authors; empty commits don't count, so this is a content commit). Pushed to `origin/main`.
+
+**Files touched:** `README.md`, `prompts/vibe-coding/prompt-log.md`
+
+---
+
+### 8. L1 direct on Decisions API, everything else on provider deepseek — 2026-10-11
+
+**Prompt:**
+
+```text
+i dont want fallback or anything i want the chat bot to work with deepseek via command code api key
+classifier through decision api
+and anything else is also deepseek
+```
+
+**What it produced:** Removed the provider/fallback branching — L1 (`src/lib/firewall/l1.ts`) now calls `typesafe/jev-1.13` on the direct Decisions API (`POST https://decisions-api.dev/v1/systemone`, `DECISIONS_API_KEY`, browser-like User-Agent, no `x-cmd-zdr`, 10 s budget, only `code === 0` accepted, still fail-closed via `FirewallUnavailableError`). Assistant chat and L2 deep analysis are untouched on `COMMANDCODE_API_KEY` + `deepseek/deepseek-v4.1-flash`. Updated `.env.example` (both keys documented), `AGENTS.md` (deploy env list), `README.md`, `docs/abstract.md`, `docs/architecture-deck.md` (model routing, diagram, timeouts, memo-scanning key). Verified: `npm run typecheck`, `npm run test`, live `callJev` fetch asserting `L1Probabilities` parses. No key value pasted or committed.
+
+**Files touched:** `src/lib/firewall/l1.ts`, `.env.example`, `AGENTS.md`, `README.md`, `docs/abstract.md`, `docs/architecture-deck.md`, `prompts/vibe-coding/prompt-log.md`
+
+---
