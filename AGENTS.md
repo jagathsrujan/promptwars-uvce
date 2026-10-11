@@ -51,7 +51,7 @@ src/                 <- application code (stack-agnostic until chosen)
 
 > Fill this in the moment the stack is chosen, and keep it current. Agents rely on this to build/test.
 
-- Stack: Next.js 15 (App Router) + TypeScript (strict) + Tailwind CSS 4; Supabase (Postgres + Auth + RLS) as the only backend; Vercel AI SDK (`ai` + `@ai-sdk/openai-compatible`) calling the Command Code Provider API (`deepseek/deepseek-v4.1-flash`, server-side only in `/api/chat`, env `COMMANDCODE_API_KEY`)
+- Stack: Next.js 15 (App Router) + TypeScript (strict) + Tailwind CSS 4; Supabase (Postgres + Auth + RLS) as the only backend; Vercel AI SDK (`ai` + `@ai-sdk/openai-compatible`) calling the Command Code Provider API (`deepseek/deepseek-v4.1-flash`, server-side only in `/api/chat`, env `COMMANDCODE_API_KEY`); Phase 4 cascade adds an optional local Laya gate (`LAYA_BASE_URL`/`LAYA_MODEL`, unset on Vercel → Phase 3 path) + daily HMAC salt (`JEV_DAY_SALT`), all server-only
 - Install: `npm install`
 - Run locally: `npm run dev` (needs `.env.local` — copy `.env.example`; see README)
 - Build: `npm run build` · Typecheck: `npm run typecheck`

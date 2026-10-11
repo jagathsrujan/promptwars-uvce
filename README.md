@@ -2,9 +2,9 @@
 
 > Hackathon entry for **PromptWars x UVCE** (Marvel @ UVCE, powered by Hack2skill) — 8-hour build sprint, **AI Security & FinTech** category.
 
-> **TL;DR:** A defensive AI firewall guarding a real banking ledger. It intercepts, analyzes, and sanitizes every untrusted input — chat text and transfer memos — before any financial tool runs. Four layers (L0 signatures → L1 `typesafe/jev` probabilities → L2 deepseek deep analysis → L3 execution guardrails), fail closed everywhere. A blocked injection is a transaction that provably never happened. **25/25 attacks blocked, 111 unit tests, live on Vercel.**
+> **TL;DR:** A defensive AI firewall guarding a real banking ledger. It intercepts, analyzes, and sanitizes every untrusted input — chat text and transfer memos — before any financial tool runs. Four layers (L0 signatures → L1 `typesafe/jev` probabilities → L2 deepseek deep analysis → L3 execution guardrails), fail closed everywhere, plus a Phase 4 cascade (Laya local gatekeeper → Jev cloud auditor over anonymized features, PayPal-style lists, adaptive per-user baseline). A blocked injection is a transaction that provably never happened. **25/25 attacks blocked, 171 unit tests, live on Vercel.**
 
-✅ Live demo · ✅ 25/25 attacks blocked · ✅ 111 unit tests · Next.js 15 + Supabase + Vercel
+✅ Live demo · ✅ 25/25 attacks blocked · ✅ 171 unit tests · Next.js 15 + Supabase + Vercel
 
 Keywords: prompt-injection, jailbreak, roleplay-attack, tool-calling guardrails, fail-closed, zero-trust, fintech, adversarial evaluation
 
@@ -65,6 +65,17 @@ Intercepts, analyzes and sanitizes untrusted input (free-text requests, memos) b
 - **Fail closed:** any classifier failure, timeout, or unparseable response → BLOCKED with `deciding_layer: FAIL_CLOSED`. Enforces strict guardrails so ambiguous or hostile inputs never compromise system safety.
 - Console at `/firewall`: verdict feed, attack presets, fail-closed simulation switches, per-decision input/verdict/signals/probabilities/reasoning/latency. Persisted to `firewall_logs`.
 
+### Phase 4 — Cascading risk engine (enhancement layer, Vercel-safe)
+
+| Piece | What | Cost / behavior |
+|---|---|---|
+| Laya local gatekeeper (Vega-class) | Same 5 typed questions as L1, PII-redacted state, in-VPC via `LAYA_BASE_URL` (Ollama native `/api/generate`, `format: json`, default `qwen2.5:1.5b`); p ≥ 0.90 or risk ≥ 70 → BLOCKED, trusted + risk < 25 → APPROVED, else tokenise → cloud | ~1 s on MacBook 1.5b (`LAYA_TIMEOUT_MS` covers measured inference; 50 ms spec / 150 ms demo defaults kept); unset → Phase 3 path exactly |
+| Jev cloud auditor | Escalated gray-zone only, over the anonymized tokenised bundle (hashes + aggregates, never raw PII); risk ≥ 70 → BLOCKED, 25–70 → REVIEW, < 25 → APPROVED | `JEV_CLOUD` layer; REVIEW step-up via Confirm tap, TTL-defaults to BLOCKED |
+| PayPal lists | `firewall_lists` (allow/block/review by `acct_hash`/`device_hash`, RLS own-read, console-exempt); blocklist → BLOCKED 100 before any model | Zero model cost on hit |
+| Adaptive baseline | `user_risk_profiles` (Welford mean/M2, hour histogram, counterparties/devices, version); cold-start 0, capped +25; learns only from APPROVED+settled+7d-clean; fraud → 90-day blocklist, never the baseline; hourly tune cron is log-only | VPC-only, no new infra |
+
+- New verdict status `REVIEW` (gray-zone quarantine: money denied with step-up, reads allowed) and layers `LAYA_LOCAL` / `JEV_CLOUD`; new env `LAYA_BASE_URL`, `LAYA_MODEL`, `JEV_DAY_SALT` (server-only, never `NEXT_PUBLIC_`).
+
 ## Problem-statement traceability (source of truth: [docs/problem-statement.md](docs/problem-statement.md))
 
 > Each official "Your system must" bullet maps to exactly one enforcement point. No bullet is satisfied by prompt text alone — every row ends in deterministic code plus a live route a judge can click.
@@ -90,7 +101,7 @@ Intercepts, analyzes and sanitizes untrusted input (free-text requests, memos) b
 
 ### Verdict JSON examples (shape = `FirewallVerdict` in `src/lib/firewall/types.ts`; explanations verbatim from `BLOCK_EXPLANATIONS`)
 
-Scores / layers / categories below match the live-matrix rows cited (deck rows 16 / 1 / 14). `111 unit tests` (`npm test`: 15 normalize + 30 signatures + 27 verdict + 16 L1 parser/routing + 14 L2 parsing + 9 L3 memo scan) cover the normalizer, signatures, L1 parser + dual-path routing, L2 parsing, decision table, and lockout math; `npm run test:live` re-runs the 25-case matrix (23 cases + 2 simulated-outage fail-closed cases).
+Scores / layers / categories below match the live-matrix rows cited (deck rows 16 / 1 / 14). `171 unit tests` (`npm test`: 15 normalize + 30 signatures + 27 verdict + 16 L1 parser/routing + 14 L2 parsing + 13 L3 memo scan + step-up + 10 tokenise + 14 Laya + 15 cascade + 10 adaptive + 7 lists) cover the normalizer, signatures, L1 parser + dual-path routing, L2 parsing, decision table, lockout math, cascade gating, tokenisation, Laya adapter, adaptive caps, and list resolution; `npm run test:live` re-runs the 25-case matrix (23 cases + 2 simulated-outage fail-closed cases).
 
 APPROVED — legit transfer request (deck row 16: `pay Rahul 500 for dinner from savings` → `NONE` / L1 / risk 4), routed to tools via `/assistant`:
 
@@ -287,7 +298,7 @@ APPROVED is necessary but never sufficient for money: the human Confirm tap is s
 |---|---|---|---|
 | Innovation & novelty | 12.5 | Probabilities-as-primitive (`typesafe/jev` returns scores, no text channel); verdict-as-product (same JSON for chat, memo, console, execution); defense-in-depth where models only contribute evidence | `/firewall`, [docs/abstract.md](docs/abstract.md) |
 | Problem-solving depth | 12.5 | Real ledger worth protecting — blocked attack = provably missing ledger rows; legit requests route, hostile/ambiguous block with deterministic `status` / `risk_score` / `threat_category` / `explanation` | [Live demo](https://banksim-uvce.vercel.app), `/transfer`, `/assistant` |
-| Prompt & AI rigor | 10.0 | Two versioned product prompts (L2 classifier with 10 few-shots + assistant v2 with SECURITY PIPELINE) + verbatim build-prompt log; 25-case live matrix + 111 unit tests | [prompts/](prompts/), `npm test`, `npm run test:live` |
+| Prompt & AI rigor | 10.0 | Two versioned product prompts (L2 classifier with 10 few-shots + assistant v2 with SECURITY PIPELINE) + verbatim build-prompt log; 25-case live matrix + 171 unit tests | [prompts/](prompts/), `npm test`, `npm run test:live` |
 | Functionality & cloud deployment | 10.0 | Working deployment on a public URL; core flow (login → balance → transfer → receipt) works on another device | [Live demo](https://banksim-uvce.vercel.app) |
 | Pitch delivery & defence | 5.0 | Fail-closed simulations, guardrail numbers, and edge-case table demonstrable live in the console | `/firewall`, [docs/architecture-deck.md](docs/architecture-deck.md) |
 
@@ -310,7 +321,7 @@ Deliverables: [problem statement](docs/problem-statement.md) · [abstract](docs/
 - **Assistant E2E:** "pay Rahul 500 from savings with memo dinner" → confirmation card; "yes go ahead" in chat did **not** execute; Confirm tap produced `TXN-20261011-1FA241` with mirrored `TRANSFER_IN` + notification on Rahul's side. `COMMANDCODE_API_KEY` absent from client bundles.
 - **RLS on hosted DB:** cross-user read returns empty, forged insert 403, delete 403 (`firewall_logs`, chat tables).
 - **Phase 1 E2E:** register → onboarding → dashboard; transfers move both balances with shared reference + both notifications; insufficient/frozen/closed/self/over-limit/malformed → clean errors, zero partial state; statements/CSV, cards, beneficiaries, notifications, profile, password change, sign out.
-- **111 unit tests** (`npm test`: 15 normalize + 30 signatures + 27 verdict + 16 L1 parser/routing + 14 L2 parsing + 9 L3 memo scan): normalizer, signatures, L1 parser + dual-path routing, L2 parsing, weights, decision table, lockout math. SQL suites: [supabase/tests/verify.sql](supabase/tests/verify.sql) (ledger, RLS, atomicity, rejections) + `verify_chat.sql` (token single-use + TTL + user binding).
+- **171 unit tests** (`npm test`: 15 normalize + 30 signatures + 27 verdict + 16 L1 + 14 L2 + 13 L3 + 10 tokenise + 14 Laya + 15 cascade + 10 adaptive + 7 lists): normalizer, signatures, L1 parser + dual-path routing, L2 parsing, weights, decision table, lockout math, cascade gating, tokenisation, Laya adapter, adaptive caps, list resolution. SQL suites: [supabase/tests/verify.sql](supabase/tests/verify.sql) (ledger, RLS, atomicity, rejections) + `verify_chat.sql` (token single-use + TTL + user binding).
 
 ## Stack
 
@@ -327,7 +338,7 @@ Deliverables: [problem statement](docs/problem-statement.md) · [abstract](docs/
 ### 1. Create the Supabase project
 
 1. Create a project at [supabase.com/dashboard](https://supabase.com/dashboard).
-2. In **SQL Editor**, run in order: `supabase/migrations/20261011000001_schema.sql`, `..._000002_rls.sql`, `..._000003_functions.sql`, `..._000004_chat.sql`, `..._000005_chat_client_id.sql`, `..._000006_firewall.sql`, then `supabase/seed.sql` (idempotent — re-run to reset demo data). Or `supabase db push` + paste `seed.sql`.
+2. In **SQL Editor**, run in order: `supabase/migrations/20261011000001_schema.sql`, `..._000002_rls.sql`, `..._000003_functions.sql`, `..._000004_chat.sql`, `..._000005_chat_client_id.sql`, `..._000006_firewall.sql`, `..._000007_cascade.sql`, then `supabase/seed.sql` (idempotent — re-run to reset demo data). Or `supabase db push` + paste `seed.sql`.
 3. **Auth → Sign In / Providers → Email**: turn **off** "Confirm email" for the demo (seed users are pre-confirmed; fresh demo signups then skip the inbox step).
 
 ### 2. Environment
@@ -341,9 +352,12 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 COMMANDCODE_API_KEY=cc-your-key-from-command-code-studio
 DECISIONS_API_KEY=your-key-for-decisions-api-dev
+LAYA_BASE_URL=
+LAYA_MODEL=
+JEV_DAY_SALT=
 ```
 
-Anon key is public by design (RLS + RPC-only money movement; never use `service_role` here). `COMMANDCODE_API_KEY` is server-side only (assistant chat + L2 deep analysis + primary L1 jev path); `DECISIONS_API_KEY` is an optional server-side L1 backup used only when the provider key is missing. Without any L1/L2 key the firewall still blocks via L0 + fail-closed, but escalations cannot run.
+Anon key is public by design (RLS + RPC-only money movement; never use `service_role` here). `COMMANDCODE_API_KEY` is server-side only (assistant chat + L2 deep analysis + primary L1 jev path); `DECISIONS_API_KEY` is an optional server-side L1 backup used only when the provider key is missing. `LAYA_BASE_URL`/`LAYA_MODEL` (local gatekeeper, unset on Vercel → Phase 3 path) and `JEV_DAY_SALT` (daily HMAC salt, rotate daily) are server-only, never `NEXT_PUBLIC_`, never logged. Without any L1/L2 key the firewall still blocks via L0 + fail-closed, but escalations cannot run.
 
 ### 3. Run
 
@@ -352,7 +366,7 @@ npm install
 npm run dev        # http://localhost:3000
 npm run build      # production build (passes with no env vars set)
 npm run typecheck  # tsc --noEmit
-npm test           # 111 unit tests (15 normalize + 30 signatures + 27 verdict + 16 L1 + 14 L2 + 9 L3)
+npm test           # 171 unit tests (15 normalize + 30 signatures + 27 verdict + 16 L1 + 14 L2 + 13 L3 + 10 tokenise + 14 Laya + 15 cascade + 10 adaptive + 7 lists)
 npm run test:live  # 25-case live attack matrix (23 cases + 2 simulated-outage fail-closed; needs COMMANDCODE_API_KEY)
 ```
 

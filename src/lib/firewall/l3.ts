@@ -24,7 +24,7 @@ import {
   type FirewallIntent,
   type FirewallVerdict,
 } from "./types";
-import { blockedVerdict, l0Signals, normalizeSanitizedIntent, rateLimitVerdict } from "./verdict";
+import { blockedVerdict, l0Signals, normalizeSanitizedIntent, rateLimitVerdict, reviewVerdict } from "./verdict";
 import { MONEY_TOOL_NAMES } from "@/lib/assistant/schemas";
 import type { AssistantToolName } from "@/lib/assistant/types";
 
@@ -50,6 +50,9 @@ const MONEY_TOOLS = new Set<string>(MONEY_TOOL_NAMES);
 export type ToolGateResult =
   | { ok: true }
   | { ok: false; verdict: FirewallVerdict; log_block: boolean };
+
+/** Read tools stay available under REVIEW (step-up only gates money). */
+const READ_TOOLS = new Set(["list_accounts", "get_transactions", "list_beneficiaries", "list_cards"]);
 
 function deny(verdict: FirewallVerdict, logBlock = true): ToolGateResult {
   return { ok: false, verdict, log_block: logBlock };
@@ -137,8 +140,44 @@ export async function guardToolCall(args: {
     );
   }
 
-  // 1. A missing or non-approved verdict is a fail-closed state, not an open door.
-  if (!args.verdict || args.verdict.status !== "APPROVED") {
+  // 1. A missing verdict is a fail-closed state, not an open door. A
+  // non-APPROVED verdict refuses everything — except REVIEW, which denies
+  // money tools with a step-up prompt (the Phase 2 confirm token + OTP)
+  // while leaving read tools available.
+  if (!args.verdict) {
+    return deny(
+      blockedVerdict({
+        category: "VALIDATION_FAILURE",
+        risk_score: 80,
+        layer: "FAIL_CLOSED",
+        explanation:
+          "The security check did not approve this request, so no action can run. Nothing was executed.",
+      }),
+    );
+  }
+
+  if (args.verdict.status === "REVIEW") {
+    if (READ_TOOLS.has(args.toolName)) return { ok: true };
+    return deny(
+      reviewVerdict({
+        category: args.verdict.threat_category,
+        risk_score: args.verdict.risk_score,
+        layer: "L3",
+        explanation:
+          "This needs an extra check before money can move — please confirm it again and complete the step-up check. Nothing was executed.",
+        signals: [
+          {
+            layer: "L3",
+            rule: "review_step_up",
+            weight: args.verdict.risk_score,
+            detail: `REVIEW verdict from ${args.verdict.deciding_layer}: money tools denied until step-up completes`,
+          },
+        ],
+      }),
+    );
+  }
+
+  if (args.verdict.status !== "APPROVED") {
     return deny(
       blockedVerdict({
         category: "VALIDATION_FAILURE",

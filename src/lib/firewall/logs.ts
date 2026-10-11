@@ -52,6 +52,9 @@ export async function logDecision(
         l0: decision.l0,
         l1: decision.l1,
         l2: decision.l2,
+        laya_latency_ms: decision.laya?.latency_ms ?? null,
+        tokenised: (decision.tokenised ?? null) as unknown as Json,
+        adaptive_boost: decision.adaptive_boost ?? 0,
       } as unknown as Json,
       intent: decision.verdict.sanitized_intent?.intent ?? null,
       latency_ms: decision.latency_ms,
@@ -92,12 +95,17 @@ export type FirewallFeedItem = {
   latency_ms: number;
   executed: boolean;
   audit: boolean;
+  /* Phase 4 cascade evidence (absent on pre-cascade rows). */
+  laya_latency_ms: number | null;
+  tokenised: FirewallDecision["tokenised"];
+  adaptive_boost: number;
 };
 
 export type FirewallStats = {
   total: number;
   approved: number;
   blocked: number;
+  review: number;
   approval_rate: number;
   executed: number;
   blocks_by_layer: Record<DecidingLayer, number>;
@@ -114,6 +122,9 @@ type LayerDetails = {
   l0?: FirewallDecision["l0"];
   l1?: L1Probabilities | null;
   l2?: L2Analysis | null;
+  laya_latency_ms?: number;
+  tokenised?: FirewallDecision["tokenised"];
+  adaptive_boost?: number;
 };
 
 export function hydrateLog(row: FirewallLog): FirewallFeedItem {
@@ -140,6 +151,9 @@ export function hydrateLog(row: FirewallLog): FirewallFeedItem {
     latency_ms: row.latency_ms,
     executed: row.executed,
     audit: row.audit,
+    laya_latency_ms: details.laya_latency_ms ?? null,
+    tokenised: details.tokenised ?? null,
+    adaptive_boost: details.adaptive_boost ?? 0,
   };
 }
 
@@ -175,15 +189,19 @@ export function computeStats(items: FirewallFeedItem[]): FirewallStats {
     L2: 0,
     L3: 0,
     FAIL_CLOSED: 0,
+    LAYA_LOCAL: 0,
+    JEV_CLOUD: 0,
   };
   const categories = new Map<ThreatCategory, number>();
   let approved = 0;
   let blocked = 0;
+  let review = 0;
   let executed = 0;
   let latencySum = 0;
 
   for (const item of items) {
     if (item.status === "APPROVED") approved += 1;
+    else if (item.status === "REVIEW") review += 1;
     else {
       blocked += 1;
       blocksByLayer[item.deciding_layer] += 1;
@@ -203,6 +221,7 @@ export function computeStats(items: FirewallFeedItem[]): FirewallStats {
     total,
     approved,
     blocked,
+    review,
     approval_rate: total > 0 ? Math.round((approved / total) * 100) : 100,
     executed,
     blocks_by_layer: blocksByLayer,

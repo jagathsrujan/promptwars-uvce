@@ -169,6 +169,27 @@ export function approvedVerdict(args: {
   };
 }
 
+export function reviewVerdict(args: {
+  category: ThreatCategory;
+  risk_score: number;
+  layer: FirewallSignal["layer"];
+  explanation?: string;
+  signals?: FirewallSignal[];
+  sanitized_intent?: SanitizedIntent | null;
+}): FirewallVerdict {
+  return {
+    status: "REVIEW",
+    risk_score: Math.max(0, Math.min(100, Math.round(args.risk_score))),
+    threat_category: args.category,
+    explanation:
+      args.explanation ??
+      "This needs an extra check before it can run — please confirm it again and complete the step-up check.",
+    deciding_layer: args.layer,
+    signals: args.signals ?? [],
+    sanitized_intent: args.sanitized_intent ?? null,
+  };
+}
+
 /* Rate-limit verdicts (L3 — deterministic, no classifier involved) ---------------- */
 
 export type RateLimitKind = "messages" | "money" | "lockout";
@@ -211,12 +232,24 @@ export type DecisionInputs = {
   l2Failure: boolean;
   /** Clarity gating applies to requests, not memos. */
   evaluateClarity: boolean;
+  /**
+   * Phase 4 cascade inputs (optional — absent on the Phase 3 path).
+   * layaProbs: local gatekeeper probabilities (null when LAYA_BASE_URL unset).
+   * trust: the PayPal trust conjunction; allowlist fast-approve needs all three.
+   * adaptiveBoost: per-user deviation points (0 when cold/absent), added to the composite.
+   * jevRisk: cloud auditor (Jev) risk for escalated gray-zone when L2 is absent.
+   */
+  layaProbs?: L1Probabilities | null;
+  trust?: { allowlistedSalary: boolean; knownDevice: boolean; knownBeneficiary: boolean } | null;
+  adaptiveBoost?: number;
+  jevRisk?: number | null;
 };
 
 export function decideVerdict(inputs: DecisionInputs): FirewallVerdict {
   const { l0, l1, l2, jevFailure, l2Failure } = inputs;
   const baseSignals = l0Signals(l0);
-  const composite = composeRisk(l0, l1);
+  const adaptiveBoost = Math.max(0, Math.min(25, Math.round(inputs.adaptiveBoost ?? 0)));
+  const composite = Math.max(0, Math.min(100, composeRisk(l0, l1) + adaptiveBoost));
 
   // 1. Hard deterministic signatures — zero LLM cost, no exceptions.
   if (l0.hardBlocked) {
@@ -238,6 +271,58 @@ export function decideVerdict(inputs: DecisionInputs): FirewallVerdict {
         "The input was empty or contained only invisible characters — there was nothing to analyze.",
       signals: baseSignals,
     });
+  }
+
+  // 2b. Phase 4 cascade — Laya fast paths (only when the local gatekeeper ran).
+  // Order mirrors the deterministic rules: hard block first, trusted approve
+  // second; anything gray falls through to the Jev/L2 path below.
+  const layaProbs = inputs.layaProbs ?? null;
+  if (layaProbs) {
+    const layaSignals = l1Signals(layaProbs).map((s) => ({ ...s, layer: "LAYA_LOCAL" as const }));
+    const layaSignalsBase = [...baseSignals, ...layaSignals];
+    const layaComposite = Math.max(
+      0,
+      Math.min(100, composeRisk(l0, layaProbs) + adaptiveBoost),
+    );
+    const layaTop = topHostileProbability(layaProbs);
+    const trust = inputs.trust ?? null;
+    const trusted =
+      trust !== null && trust.allowlistedSalary && trust.knownDevice && trust.knownBeneficiary;
+
+    // Laya hard block: p >= 0.90 or composite >= 70.
+    if (layaTop.probability >= THRESHOLDS.hard_block_p || layaComposite >= 70) {
+      return blockedVerdict({
+        category: layaTop.probability >= THRESHOLDS.hard_block_p ? layaTop.category : "VALIDATION_FAILURE",
+        risk_score: layaComposite,
+        layer: "LAYA_LOCAL",
+        explanation:
+          layaTop.probability >= THRESHOLDS.hard_block_p
+            ? `${BLOCK_EXPLANATIONS[layaTop.category]} (local gatekeeper confidence ${(layaTop.probability * 100).toFixed(0)}%.)`
+            : "The local security check flagged this request, so it was blocked. Nothing was executed.",
+        signals: layaSignalsBase,
+      });
+    }
+
+    // Laya trusted fast-approve: allowlisted salary + known device + known
+    // beneficiary + composite < 25 + top hostile < 0.40.
+    if (trusted && layaComposite < 25 && layaTop.probability < THRESHOLDS.escalate) {
+      return approvedVerdict({
+        risk_score: layaComposite,
+        layer: "LAYA_LOCAL",
+        explanation: "Checked locally against your trusted profile — treated as a normal banking request.",
+        signals: layaSignalsBase,
+      });
+    }
+
+    // Laya unclear message → AMBIGUOUS_INPUT without cloud cost.
+    if (inputs.evaluateClarity && layaProbs.clarity.unclear >= THRESHOLDS.unclear_p) {
+      return blockedVerdict({
+        category: "AMBIGUOUS_INPUT",
+        risk_score: layaComposite,
+        layer: "LAYA_LOCAL",
+        signals: layaSignalsBase,
+      });
+    }
   }
 
   // 3. Fast classifier unavailable → fail closed. Never an approval.
@@ -272,6 +357,51 @@ export function decideVerdict(inputs: DecisionInputs): FirewallVerdict {
 
   if (needsDeepAnalysis) {
     if (l2Failure || !l2) {
+      // Phase 4: the cascade's cloud auditor (Jev risk over the tokenised
+      // bundle) may resolve the gray zone without L2. Bands: >= 70 BLOCKED,
+      // 25–70 REVIEW (step-up; TTL-defaults to BLOCKED), < 25 APPROVED.
+      // Absent on the Phase 3 path (jevRisk null) → fail closed as before.
+      const jevRisk = inputs.jevRisk;
+      if (jevRisk !== null && jevRisk !== undefined && Number.isFinite(jevRisk)) {
+        const risk = Math.max(0, Math.min(100, Math.round(jevRisk)));
+        const jevSignal = signal(
+          "JEV_CLOUD",
+          "cloud_audit",
+          risk,
+          `cloud auditor risk ${risk} over the anonymized feature bundle`,
+        );
+        const jevSignals = [...signals, jevSignal];
+        if (risk >= 70) {
+          return blockedVerdict({
+            category: l0.topCategory ?? top.category,
+            risk_score: risk,
+            layer: "JEV_CLOUD",
+            signals: jevSignals,
+          });
+        }
+        if (risk >= 25) {
+          return reviewVerdict({
+            category: l0.topCategory ?? top.category,
+            risk_score: risk,
+            layer: "JEV_CLOUD",
+            signals: jevSignals,
+          });
+        }
+        if (inputs.evaluateClarity && l1.clarity.unclear >= THRESHOLDS.unclear_p) {
+          return blockedVerdict({
+            category: "AMBIGUOUS_INPUT",
+            risk_score: risk,
+            layer: "JEV_CLOUD",
+            signals: jevSignals,
+          });
+        }
+        return approvedVerdict({
+          risk_score: risk,
+          layer: "JEV_CLOUD",
+          explanation: "Cloud audit of the anonymized request found no material risk.",
+          signals: jevSignals,
+        });
+      }
       return blockedVerdict({
         category: l0.topCategory ?? top.category,
         risk_score: Math.max(55, composite),

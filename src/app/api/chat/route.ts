@@ -34,8 +34,11 @@ import {
   recordConversationActivity,
 } from "@/lib/assistant/conversations";
 import { logDecision } from "@/lib/firewall/logs";
-import { rateLimitDecision, runFirewall } from "@/lib/firewall/pipeline";
+import { rateLimitDecision, runFirewall, type CascadeContext } from "@/lib/firewall/pipeline";
 import { RATE_LIMITS, countRecentMessages } from "@/lib/firewall/rate-limit";
+import { adaptivePoints, loadProfile } from "@/lib/firewall/adaptive";
+import { listsForSurface, resolveListHits } from "@/lib/firewall/lists";
+import { hmacToken } from "@/lib/firewall/tokenise";
 import type { FirewallDecision } from "@/lib/firewall/types";
 
 export const maxDuration = 60;
@@ -132,6 +135,43 @@ export async function POST(req: Request) {
 
     // ── Firewall: screen the message before any tool consideration ──────────
     const messagesUsed = await countRecentMessages(supabase, user.id);
+    // Phase 4 cascade context (best-effort, RLS-scoped — a lookup failure
+    // resolves to absent and the classifiers still run; console-exempt).
+    const cascade: CascadeContext = {};
+    try {
+      const daySalt = process.env.JEV_DAY_SALT ?? "";
+      const [accounts, beneficiaries] = await Promise.all([
+        supabase.from("accounts").select("account_number").eq("user_id", user.id).limit(10),
+        supabase.from("beneficiaries").select("account_number").eq("user_id", user.id).limit(50),
+      ]);
+      const acctNumbers = (accounts.data ?? []).map((a) => a.account_number).filter(Boolean);
+      const beneNumbers = new Set((beneficiaries.data ?? []).map((b) => b.account_number));
+      const profile = await loadProfile(supabase, user.id);
+      const hour = Number(
+        new Intl.DateTimeFormat("en-GB", { hour: "2-digit", hour12: false, timeZone: "Asia/Kolkata" }).format(new Date()),
+      );
+      cascade.adaptiveBoost = adaptivePoints(profile, {
+        amount: 0,
+        counterpartyHash: null,
+        deviceHash: null,
+        hour: Number.isFinite(hour) ? hour : 12,
+      });
+      if (daySalt) {
+        const keys = acctNumbers.map((n) => ({
+          key_type: "acct_hash" as const,
+          key_hash: hmacToken(daySalt, `acct:${n}`),
+        }));
+        const hits = await resolveListHits(supabase, user.id, keys);
+        cascade.lists = listsForSurface("chat", hits);
+        cascade.trust = {
+          allowlistedSalary: hits.allowlisted && acctNumbers.length > 0,
+          knownDevice: profile.device_hashes.length > 0,
+          knownBeneficiary: beneNumbers.size > 0,
+        };
+      }
+    } catch (error) {
+      console.error("Cascade context failed; continuing without it", error);
+    }
     const decision: FirewallDecision =
       messagesUsed >= RATE_LIMITS.messages.max
         ? rateLimitDecision({
@@ -141,7 +181,7 @@ export async function POST(req: Request) {
             limit: "messages",
             detail: `${messagesUsed} messages in the last ${RATE_LIMITS.messages.window_minutes} minutes`,
           })
-        : await runFirewall({ text, surface: "chat", kind: "message" });
+        : await runFirewall({ text, surface: "chat", kind: "message", cascade });
     await logDecision(supabase, user.id, decision);
 
     const history = await loadConversationMessages(supabase, conversationId);
@@ -175,6 +215,28 @@ export async function POST(req: Request) {
           const id = `block-${crypto.randomUUID()}`;
           writer.write({ type: "text-start", id });
           writer.write({ type: "text-delta", id, delta: blockText });
+          writer.write({ type: "text-end", id });
+        },
+        onError: () => "The assistant is temporarily unavailable. Please try again in a moment.",
+        onEnd: async ({ responseMessage }) => {
+          await persist(responseMessage as UIMessage);
+        },
+      });
+      return createUIMessageStreamResponse({ stream });
+    }
+
+    // ── REVIEW (gray-zone, step-up): deterministic notice, read tools only ─
+    // Money tools are denied by the L3 gate (review_step_up) until the user
+    // re-confirms with the step-up check; read tools still run so balances
+    // and statements stay available. No model call for the notice itself.
+    if (decision.verdict.status === "REVIEW") {
+      const stream = createUIMessageStream({
+        originalMessages: history,
+        execute: ({ writer }) => {
+          writer.write(firewallPart(decision));
+          const id = `review-${crypto.randomUUID()}`;
+          writer.write({ type: "text-start", id });
+          writer.write({ type: "text-delta", id, delta: decision.verdict.explanation });
           writer.write({ type: "text-end", id });
         },
         onError: () => "The assistant is temporarily unavailable. Please try again in a moment.",

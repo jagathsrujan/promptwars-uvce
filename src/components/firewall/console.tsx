@@ -76,7 +76,8 @@ export function FirewallConsole({
   const [running, setRunning] = useState<string | null>(null);
   const [customInput, setCustomInput] = useState("");
   const [customKind, setCustomKind] = useState<"message" | "memo">("message");
-  const [simulate, setSimulate] = useState<"none" | "jev_failure" | "l2_failure">("none");
+  const [simulate, setSimulate] = useState<"none" | "jev_failure" | "l2_failure" | "laya_failure">("none");
+  const [statusFilter, setStatusFilter] = useState<"all" | "APPROVED" | "BLOCKED" | "REVIEW">("all");
   const [refreshing, setRefreshing] = useState(false);
   const pollRef = useRef<number | null>(null);
 
@@ -147,6 +148,7 @@ export function FirewallConsole({
   );
 
   const latest = items[0] ?? null;
+  const visibleItems = statusFilter === "all" ? items : items.filter((item) => item.status === statusFilter);
   const byGroup = useMemo(
     () =>
       PRESET_GROUPS.map((group) => ({
@@ -217,7 +219,7 @@ export function FirewallConsole({
         <StatTile
           label="Decisions today"
           value={String(stats.total)}
-          detail={`${stats.approved} approved · ${stats.blocked} blocked · ${stats.executed} executed`}
+          detail={`${stats.approved} approved · ${stats.blocked} blocked · ${stats.review} review · ${stats.executed} executed`}
         />
         <StatTile
           label="Approval rate today"
@@ -230,7 +232,7 @@ export function FirewallConsole({
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Blocks by layer (today)</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {(["L0", "L1", "L2", "L3", "FAIL_CLOSED"] as const).map((layer) => (
+            {(["L0", "L1", "L2", "L3", "FAIL_CLOSED", "LAYA_LOCAL", "JEV_CLOUD"] as const).map((layer) => (
               <LayerChip key={layer} layer={layer} count={stats.blocks_by_layer[layer]} />
             ))}
           </div>
@@ -275,6 +277,7 @@ export function FirewallConsole({
               <option value="none">Off</option>
               <option value="jev_failure">jeV classifier down</option>
               <option value="l2_failure">Deep analysis (L2) down</option>
+              <option value="laya_failure">Local gatekeeper (Laya) down</option>
             </select>
           </div>
         </div>
@@ -342,22 +345,38 @@ export function FirewallConsole({
 
       {/* Live verdict feed */}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
           <div>
             <h2 className="text-sm font-semibold text-slate-900">Live verdict feed</h2>
             <p className="mt-0.5 text-xs text-slate-500">
               Newest first — every decision with its layer, score and latency. Click a row for the full evidence.
             </p>
           </div>
+          <div className="flex items-center gap-2 text-xs">
+            <span id="status-filter-label" className="text-slate-500">Show:</span>
+            <select
+              aria-labelledby="status-filter-label"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
+              className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700"
+            >
+              <option value="all">All verdicts</option>
+              <option value="APPROVED">Approved only</option>
+              <option value="BLOCKED">Blocked only</option>
+              <option value="REVIEW">Review queue</option>
+            </select>
+          </div>
         </div>
 
-        {items.length === 0 ? (
+        {visibleItems.length === 0 ? (
           <p className="px-5 py-8 text-center text-sm text-slate-500">
-            No decisions yet — run an attack preset above and watch it land here.
+            {statusFilter === "REVIEW"
+              ? "Review queue is empty — gray-zone decisions land here for step-up."
+              : "No decisions yet — run an attack preset above and watch it land here."}
           </p>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {items.map((item) => {
+            {visibleItems.map((item) => {
               const expanded = expandedId === item.id;
               return (
                 <li key={item.id}>

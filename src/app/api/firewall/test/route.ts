@@ -19,7 +19,7 @@ export const maxDuration = 30;
 const bodySchema = z.object({
   input: z.string().max(4000),
   kind: z.enum(["message", "memo"]).default("message"),
-  simulate: z.enum(["jev_failure", "l2_failure"]).nullable().optional(),
+  simulate: z.enum(["jev_failure", "l2_failure", "laya_failure"]).nullable().optional(),
 });
 
 export async function POST(req: Request) {

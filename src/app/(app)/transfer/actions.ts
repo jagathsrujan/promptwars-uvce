@@ -10,7 +10,10 @@ import {
 } from "@/lib/constants";
 import { logDecision } from "@/lib/firewall/logs";
 import { checkMoneyAllowance } from "@/lib/firewall/l3";
-import { runFirewall, simpleDecision } from "@/lib/firewall/pipeline";
+import { runFirewall, simpleDecision, type CascadeContext } from "@/lib/firewall/pipeline";
+import { adaptivePoints, loadProfile } from "@/lib/firewall/adaptive";
+import { listsForSurface, resolveListHits } from "@/lib/firewall/lists";
+import { hmacToken } from "@/lib/firewall/tokenise";
 import { approvedVerdict } from "@/lib/firewall/verdict";
 import type { FirewallVerdict } from "@/lib/firewall/types";
 
@@ -69,11 +72,48 @@ export async function performTransferAction(input: {
   // Phase 3: the memo is untrusted free text that lands on both ledgers and is
   // visible to the counterparty — it goes through the firewall (L0 + L1)
   // BEFORE any money moves. A hostile memo refuses the whole transfer, and the
-  // verdict JSON is shown in the UI.
+  // verdict JSON is shown in the UI. Phase 4: the same cascade context as
+  // chat (lists + trust + adaptive); REVIEW also refuses (step-up lives in
+  // chat — the form has no step-up flow, so gray stays refused).
   if (memo) {
-    const decision = await runFirewall({ text: memo, surface: "memo", kind: "memo" });
+    const cascade: CascadeContext = {};
+    try {
+      const daySalt = process.env.JEV_DAY_SALT ?? "";
+      const [fromAccount, beneficiaries] = await Promise.all([
+        supabase.from("accounts").select("account_number").eq("id", input.fromAccountId).maybeSingle(),
+        supabase.from("beneficiaries").select("account_number").eq("user_id", user.id).limit(50),
+      ]);
+      const profile = await loadProfile(supabase, user.id);
+      const hour = Number(
+        new Intl.DateTimeFormat("en-GB", { hour: "2-digit", hour12: false, timeZone: "Asia/Kolkata" }).format(new Date()),
+      );
+      cascade.adaptiveBoost = adaptivePoints(profile, {
+        amount: parsed.value,
+        counterpartyHash: null,
+        deviceHash: null,
+        hour: Number.isFinite(hour) ? hour : 12,
+      });
+      if (daySalt) {
+        const keys = [
+          ...(fromAccount.data?.account_number
+            ? [{ key_type: "acct_hash" as const, key_hash: hmacToken(daySalt, `acct:${fromAccount.data.account_number}`) }]
+            : []),
+          { key_type: "acct_hash" as const, key_hash: hmacToken(daySalt, `acct:${toAccountNumber}`) },
+        ];
+        const hits = await resolveListHits(supabase, user.id, keys);
+        cascade.lists = listsForSurface("memo", hits);
+        cascade.trust = {
+          allowlistedSalary: hits.allowlisted,
+          knownDevice: profile.device_hashes.length > 0,
+          knownBeneficiary: (beneficiaries.data ?? []).some((b) => b.account_number === toAccountNumber),
+        };
+      }
+    } catch (error) {
+      console.error("Cascade context failed; continuing without it", error);
+    }
+    const decision = await runFirewall({ text: memo, surface: "memo", kind: "memo", cascade });
     await logDecision(supabase, user.id, decision);
-    if (decision.verdict.status === "BLOCKED") {
+    if (decision.verdict.status !== "APPROVED") {
       return { ok: false, error: decision.verdict.explanation, firewall: decision.verdict };
     }
   }

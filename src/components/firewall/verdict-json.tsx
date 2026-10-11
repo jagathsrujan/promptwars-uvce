@@ -7,9 +7,9 @@ import { IconShield, IconShieldAlert } from "@/components/icons";
 import type { FirewallVerdict } from "@/lib/firewall/types";
 
 export function statusTone(status: FirewallVerdict["status"]) {
-  return status === "APPROVED"
-    ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-    : "bg-red-50 text-red-700 ring-red-200";
+  if (status === "APPROVED") return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+  if (status === "REVIEW") return "bg-amber-50 text-amber-700 ring-amber-200";
+  return "bg-red-50 text-red-700 ring-red-200";
 }
 
 export function riskTone(score: number) {
@@ -68,6 +68,7 @@ export function FirewallChip({
   className?: string;
 }) {
   const approved = verdict.status === "APPROVED";
+  const review = verdict.status === "REVIEW";
   return (
     <span
       title={verdict.explanation}
@@ -75,7 +76,9 @@ export function FirewallChip({
         "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-medium",
         approved
           ? "border-emerald-200 bg-emerald-50/70 text-emerald-700"
-          : "border-red-200 bg-red-50/70 text-red-700",
+          : review
+            ? "border-amber-200 bg-amber-50/70 text-amber-700"
+            : "border-red-200 bg-red-50/70 text-red-700",
         className,
       )}
     >

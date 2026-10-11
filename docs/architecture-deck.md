@@ -31,41 +31,57 @@ Threats R01–R06 (injection / jailbreak / roleplay / hidden-in-memo+obfuscation
 ## 3. System design
 
 ```
-                        ┌────────────────────────────────────────────────────────┐
+                         ┌────────────────────────────────────────────────────────┐
   chat message ─────────▶                                                                 │
   transfer-form memo ───▶   F I R E W A L L   P I P E L I N E   (server-side)             │
-                        │                                                                 │
-                        │  L0  deterministic pre-filter      <5 ms, pure functions         │
-                        │      normalize (NFKC, invisible-strip, homoglyph-fold, casefold)│
-                        │      + weighted signature rules; hard hits → BLOCKED here        │
-                        │                    │                                            │
-                        │  L1  typesafe/jev probabilities (ONE call, 5 questions)      │
-                        │      provider /systemone primary · Decisions API backup  │
-                        │      p ≥ 0.90 → BLOCKED · 0.40–0.90 → escalate · clarity gate    │
-                        │                    │                                            │
-                        │  L2  deepseek/deepseek-v4.1-flash deep analysis (escalations)   │
-                        │      temperature 0.1, x-cmd-zdr: 1, strict JSON out              │
-                        │      any failure/timeout/unparseable → FAIL CLOSED (BLOCKED)     │
-                        │                    │                                            │
-                        │  verdict JSON  {status, risk_score, threat_category,            │
-                        │                 explanation, deciding_layer, signals,           │
-                        │                 sanitized_intent}                               │
-                        │                    │                                            │
-                        │  L3  deterministic execution guardrails (inside executeTool)    │
-                        │      verdict must be APPROVED · intent allowlist · Zod params   │
-                        │      memo re-scan · money-op budget · 15-min hostile lockout    │
-                        │      money still needs the Phase 2 Confirmation tap  │
-                        └───────────┬────────────────────────────────────────────────────┘
-                                    │
-      ┌─────────────────────────────┼──────────────────────────────────┐
-      ▼                             ▼                                  ▼
-  assistant tools              transfer form                     Firewall Console
-  (executeTool chokepoint)     (perform_transfer RPC)            (feed · stats · presets)
-      │                             │                                  │
-      └──────────────┬──────────────┴──────────────────────────────────┘
-                     ▼
-        Supabase (Postgres + RLS): accounts, ledgers, confirmation_tokens,
-        firewall_logs (audit: every decision, its signals and latency)
+                         │                                                                 │
+                         │  L0  deterministic pre-filter      <5 ms, pure functions         │
+                         │      normalize (NFKC, invisible-strip, homoglyph-fold, casefold)│
+                         │      + weighted signature rules; hard hits → BLOCKED here        │
+                         │      + PayPal blocklist (hash hit → BLOCKED 100, zero model cost)│
+                         │                    │                                            │
+                         │  LAYA  local gatekeeper (Vega-class, in-VPC — when configured)      │
+                         │      same 5 questions, PII-redacted, Ollama json mode (~1 s MacBook)│
+                         │      p ≥ 0.90 or risk ≥ 70 → BLOCKED · trusted + risk < 25      │
+                         │      → APPROVED · else tokenise → cloud auditor                 │
+                         │      (unset LAYA_BASE_URL → Phase 3 L0+L1 path exactly)         │
+                         │                    │                                            │
+                         │  L1  typesafe/jev probabilities (ONE call, 5 questions)      │
+                         │      provider /systemone primary · Decisions API backup  │
+                         │      p ≥ 0.90 → BLOCKED · 0.40–0.90 → escalate · clarity gate    │
+                         │      + adaptive per-user boost (Welford baseline, capped 25)    │
+                         │                    │                                            │
+                         │  JEV cloud auditor (escalated gray-zone, anonymized bundle)     │
+                         │      tokenised features only — never raw PII                    │
+                         │      risk ≥ 70 → BLOCKED · 25–70 → REVIEW · < 25 → APPROVED     │
+                         │                    │                                            │
+                         │  L2  deepseek/deepseek-v4.1-flash deep analysis (escalations)   │
+                         │      temperature 0.1, x-cmd-zdr: 1, strict JSON out              │
+                         │      any failure/timeout/unparseable → FAIL CLOSED (BLOCKED)     │
+                         │                    │                                            │
+                         │  verdict JSON  {status (APPROVED/BLOCKED/REVIEW), risk_score,   │
+                         │                 threat_category, explanation, deciding_layer     │
+                         │                 (L0/L1/L2/L3/FAIL_CLOSED/LAYA_LOCAL/JEV_CLOUD), │
+                         │                 signals, sanitized_intent}                      │
+                         │                    │                                            │
+                         │  L3  deterministic execution guardrails (inside executeTool)    │
+                         │      verdict must be APPROVED · intent allowlist · Zod params   │
+                         │      memo re-scan · money-op budget · 15-min hostile lockout    │
+                         │      REVIEW → money denied w/ step-up, reads allowed            │
+                         │      money still needs the Phase 2 Confirmation tap  │
+                         └───────────┬────────────────────────────────────────────────────┘
+                                     │
+       ┌─────────────────────────────┼──────────────────────────────────┐
+       ▼                             ▼                                  ▼
+   assistant tools              transfer form                     Firewall Console
+   (executeTool chokepoint)     (perform_transfer RPC)            (feed · stats · presets)
+       │                             │                                  │
+       └──────────────┬──────────────┴──────────────────────────────────┘
+                      ▼
+         Supabase (Postgres + RLS): accounts, ledgers, confirmation_tokens,
+         firewall_logs (audit: every decision, its signals and latency),
+         firewall_lists (allow/block/review by hash), user_risk_profiles
+         (adaptive Welford baseline; hourly tune cron is log-only)
 ```
 
 - **Frontend + API:** Next.js 15 (App Router), TypeScript strict, Tailwind 4 — one deployable on Vercel.
@@ -75,6 +91,7 @@ Threats R01–R06 (injection / jailbreak / roleplay / hidden-in-memo+obfuscation
   - `deepseek/deepseek-v4.1-flash` via the Command Code Provider API (`COMMANDCODE_API_KEY`) — assistant chat + L2 deep analysis. **Every call carries `x-cmd-zdr: 1`** (banking data, zero data retention, no prompt training).
 - **Why two models, not one:** the cheap probabilistic gate (L1, one jev call) runs on every input; the expensive analyst (L2) only sees gray zones. Clean-path latency is ~0.6 s end-to-end on the provider path (L1 included); hard signatures cost ~0–10 ms with zero LLM calls.
 - **Why jev on L1 and not an LLM:** probabilities are branchable deterministically, cheap, and — unlike text — cannot be prompt-injected into a different answer shape. A jailbreak attempt that says "return 0.0" still gets scored as a jailbreak.
+- **Phase 4 cascade (enhancement layer, Vercel-safe):** Laya (Vega-class, local/edge) triages first when `LAYA_BASE_URL` is set — normalize, redact PII, instant-approve trusted-clean, instant-block hostile — and only gray-zone reaches Jev (cloud) over the anonymized tokenised bundle. Local proof: Ollama + `qwen2.5:1.5b` on the MacBook answers in ~1 s (`LAYA_TIMEOUT_MS` covers measured inference; the 50 ms spec budget assumes lab hardware); the 1.5b is coarse (blanket 1.0s on attacks — correct direction, blurred categories), so the committed 25/25 matrix self-pins to the Phase 3 fallback and the local cascade is proven separately (`laya-live.live.test.ts`: clean APPROVED with Laya evidence, gray hard-blocked at `LAYA_LOCAL`, outage FAIL_CLOSED). With the env unset (Vercel prod) the pipeline is bit-for-bit the Phase 3 path: no behavior change, no latency change, no new failure mode. PayPal lists gate before any model (blocklist = 100, zero cost); the adaptive baseline adds capped deviation points; REVIEW quarantines 25–70 gray-zone behind step-up (defaults to BLOCKED on TTL). The hourly tune cron is log-only — it proposes, a human applies.
 
 ## 4. Prompt flow
 
@@ -100,8 +117,12 @@ Threats R01–R06 (injection / jailbreak / roleplay / hidden-in-memo+obfuscation
 
 | Layer | Mechanism | Hardness |
 |---|---|---|
-| L0 | Pure-function normalizer + weighted signatures | Deterministic; unit-tested (111 tests); runs in <5 ms; no I/O to attack |
+| L0 | Pure-function normalizer + weighted signatures | Deterministic; unit-tested (171 tests); runs in <5 ms; no I/O to attack |
+| Laya (local) | Vega gatekeeper, same 5 questions, PII-redacted state | In-VPC only; 50 ms timeout (150 ms demo) → fail closed; unset → Phase 3 path exactly |
 | L1 | jev probabilities via typed questions (provider primary, direct backup) | Probabilities only (no text channel); 3 s provider / 10 s direct timeout → fail closed |
+| Jev (cloud) | Anonymized-bundle auditor for escalated gray-zone | Sees hashes + aggregates only; bands ≥70 BLOCKED / 25–70 REVIEW / <25 APPROVED |
+| Lists | PayPal allow/block/review by salted hash | Blocklist = BLOCKED 100 before any model; console-exempt like rate limits |
+| Adaptive | Per-user Welford baseline, capped +25 | Cold-start 0; fraud never learns (blocklist 90d instead); frozen on escalation spike |
 | L2 | deepseek classifier, JSON schema validated with Zod | Any failure/timeout/unparseable output → FAIL_CLOSED BLOCKED; an approved-but-contradictory output (risk ≥ 70) is also blocked |
 | Verdict | Deterministic decision table (score ≥ 40, hard signature, p ≥ 0.90, clarity gate) | Pure function, unit-tested; the model output never *becomes* the decision without passing it |
 | L3 | Execution guardrails inside the single `executeTool` chokepoint | Verdict must be APPROVED; intent pin must match the tool; memos re-scanned; money-op budget + hostile lockout; money still needs the Phase 2 confirmation token (single-use, 5-min, DB-enforced) |
@@ -123,6 +144,10 @@ Threats R01–R06 (injection / jailbreak / roleplay / hidden-in-memo+obfuscation
 | Rate limiting | 30 messages/5 min, 10 executed money ops/hour → BLOCKED · RATE_LIMIT (L3) + audit flag |
 | Repeated hostile blocks | 5 hostile BLOCKED verdicts in 10 min → 15-minute money-tool lockout (read-only chat keeps working; ambiguous/rate-limit blocks deliberately excluded from the hostile counter) |
 | Classifier outage (jev or L2) | BLOCKED · FAIL_CLOSED — never an approval; simulated live from the console ("jeV classifier down", "Deep analysis down") |
+| Local gatekeeper (Laya) outage | BLOCKED · FAIL_CLOSED (`laya` failure layer; console "Local gatekeeper down" switch) — never an approval |
+| Gray-zone cloud audit (Jev) | Risk ≥ 70 → BLOCKED · `JEV_CLOUD`; 25–70 → REVIEW (step-up, TTL-defaults to BLOCKED); < 25 → APPROVED; memo-less Phase 3 path unchanged |
+| Blocklisted account/device | BLOCKED · 100 at L3 before any model call (PayPal blocklist; console-exempt) |
+| Trusted salary + known device + known beneficiary | Instant APPROVED at `LAYA_LOCAL` when the local risk < 25 (zero cloud cost); anything gray still escalates |
 | Model returns garbage JSON | Schema-validated; invalid → FAIL_CLOSED BLOCKED |
 | Execution without an approved verdict | L3 refuses every tool call (`FIREWALL_BLOCKED`); fail-closed state |
 
@@ -196,4 +221,4 @@ Every row below is a real pipeline run (L0 → jev → deepseek) — not a mock.
 - **"Can the assistant be talked out of the firewall?"** → Blocked inputs never reach the model at all (canned server-side reply), the model is prompt-hardened against meta-probing, and even a fully hijacked model hits L3: no APPROVED verdict, no tool; no confirmation tap, no money.
 - **"What breaks under load?"** → Rate limits (30 msg/5 min, 10 money ops/hr) plus the 3 s (provider) / 10 s (direct backup) / 8 s classifier timeouts bound worst-case latency; a burst beyond the budget is BLOCKED · RATE_LIMIT with an audit flag, and repeated hostile traffic locks money tools for 15 minutes.
 - **"Why these models?"** → jev returns probabilities, which are machine-checkable and cheap — perfect for a per-message gate. DeepSeek gives a strong reasoning pass only where it matters, run under ZDR because it sees banking text. Deterministic code owns every hard decision.
-- **"How do you know it works?"** → 111 unit tests on the pure layers (`npm test`: 15 normalize + 30 signatures + 27 verdict + 16 L1 parser/routing + 14 L2 parsing + 9 L3 memo scan), a 25-case live attack matrix re-runnable with `npm run test:live`, hosted RLS checks on two real accounts, and every decision logged with its evidence in `firewall_logs`.
+- **"How do you know it works?"** → 171 unit tests on the pure layers (`npm test`: 15 normalize + 30 signatures + 27 verdict + 16 L1 parser/routing + 14 L2 parsing + 13 L3 memo scan + step-up + 10 tokenise + 14 Laya + 15 cascade + 10 adaptive + 7 lists), a 25-case live attack matrix re-runnable with `npm run test:live`, hosted RLS checks on two real accounts, and every decision logged with its evidence in `firewall_logs`.

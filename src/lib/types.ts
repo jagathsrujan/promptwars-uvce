@@ -289,11 +289,11 @@ export type Database = {
           user_id: string;
           surface: "chat" | "memo" | "console" | "confirm";
           input: string;
-          status: "APPROVED" | "BLOCKED";
+          status: "APPROVED" | "BLOCKED" | "REVIEW";
           risk_score: number;
           threat_category: string;
           explanation: string;
-          deciding_layer: "L0" | "L1" | "L2" | "L3" | "FAIL_CLOSED";
+          deciding_layer: "L0" | "L1" | "L2" | "L3" | "FAIL_CLOSED" | "LAYA_LOCAL" | "JEV_CLOUD";
           signals: Json;
           layer_details: Json;
           intent: string | null;
@@ -307,11 +307,11 @@ export type Database = {
           user_id: string;
           surface: "chat" | "memo" | "console" | "confirm";
           input: string;
-          status: "APPROVED" | "BLOCKED";
+          status: "APPROVED" | "BLOCKED" | "REVIEW";
           risk_score: number;
           threat_category: string;
           explanation: string;
-          deciding_layer: "L0" | "L1" | "L2" | "L3" | "FAIL_CLOSED";
+          deciding_layer: "L0" | "L1" | "L2" | "L3" | "FAIL_CLOSED" | "LAYA_LOCAL" | "JEV_CLOUD";
           signals?: Json;
           layer_details?: Json;
           intent?: string | null;
@@ -325,11 +325,11 @@ export type Database = {
           user_id?: string;
           surface?: "chat" | "memo" | "console" | "confirm";
           input?: string;
-          status?: "APPROVED" | "BLOCKED";
+          status?: "APPROVED" | "BLOCKED" | "REVIEW";
           risk_score?: number;
           threat_category?: string;
           explanation?: string;
-          deciding_layer?: "L0" | "L1" | "L2" | "L3" | "FAIL_CLOSED";
+          deciding_layer?: "L0" | "L1" | "L2" | "L3" | "FAIL_CLOSED" | "LAYA_LOCAL" | "JEV_CLOUD";
           signals?: Json;
           layer_details?: Json;
           intent?: string | null;
@@ -337,6 +337,78 @@ export type Database = {
           executed?: boolean;
           audit?: boolean;
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      firewall_lists: {
+        Row: {
+          id: string;
+          user_id: string;
+          list: "allow" | "block" | "review";
+          key_type: "acct_hash" | "device_hash";
+          key_hash: string;
+          reason: string;
+          expires_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          list: "allow" | "block" | "review";
+          key_type: "acct_hash" | "device_hash";
+          key_hash: string;
+          reason?: string;
+          expires_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          list?: "allow" | "block" | "review";
+          key_type?: "acct_hash" | "device_hash";
+          key_hash?: string;
+          reason?: string;
+          expires_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      user_risk_profiles: {
+        Row: {
+          user_id: string;
+          n: number;
+          amt_mean: number;
+          amt_m2: number;
+          hour_hist: number[];
+          counterparties: Json;
+          device_hashes: Json;
+          version: number;
+          frozen: boolean;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          n?: number;
+          amt_mean?: number;
+          amt_m2?: number;
+          hour_hist?: number[];
+          counterparties?: Json;
+          device_hashes?: Json;
+          version?: number;
+          frozen?: boolean;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          n?: number;
+          amt_mean?: number;
+          amt_m2?: number;
+          hour_hist?: number[];
+          counterparties?: Json;
+          device_hashes?: Json;
+          version?: number;
+          frozen?: boolean;
+          updated_at?: string;
         };
         Relationships: [];
       };

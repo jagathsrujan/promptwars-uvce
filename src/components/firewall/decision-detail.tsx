@@ -53,6 +53,12 @@ function ProbabilityBar({ label, value }: { label: string; value: number }) {
 export function DecisionDetail({ item }: { item: FirewallFeedItem }) {
   return (
     <div className="space-y-4 border-t border-slate-100 bg-slate-50/60 px-4 py-4">
+      {item.status === "REVIEW" ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+          In review — gray-zone risk {item.risk_score}. Money tools are denied until the user re-confirms with the
+          step-up check; read tools stay available. Unresolved reviews default to BLOCKED on TTL.
+        </p>
+      ) : null}
       <div className="grid gap-4 lg:grid-cols-2">
         <Section title="Verdict JSON (deterministic contract)">
           <VerdictJson verdict={toVerdict(item)} className="max-h-64" />
@@ -102,6 +108,48 @@ export function DecisionDetail({ item }: { item: FirewallFeedItem }) {
             <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
               Blocked deterministically at L0 — no LLM call was made for this input (zero classifier cost).
             </p>
+          ) : null}
+
+          {item.laya_latency_ms !== null && item.laya_latency_ms !== undefined ? (
+            <Section title="Local gatekeeper (Laya)">
+              <p className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-700">
+                Answered locally in {item.laya_latency_ms} ms — probabilities only, raw PII never left the VPC.
+                {item.adaptive_boost > 0 ? ` Adaptive boost +${item.adaptive_boost} applied to the composite.` : ""}
+              </p>
+            </Section>
+          ) : item.adaptive_boost > 0 ? (
+            <Section title="Adaptive baseline">
+              <p className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-700">
+                Adaptive boost +{item.adaptive_boost} from your spending baseline (cold-start returns 0).
+              </p>
+            </Section>
+          ) : null}
+
+          {item.tokenised ? (
+            <Section title="Cloud auditor view — anonymized (Jev sees only this)">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div>
+                  <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">Raw input (VPC only)</p>
+                  <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-slate-200 bg-white p-2 text-[11px] leading-relaxed text-slate-600">
+                    {item.input || "(empty)"}
+                  </pre>
+                </div>
+                <div>
+                  <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                    Redacted memo sent out
+                  </p>
+                  <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-slate-200 bg-white p-2 text-[11px] leading-relaxed text-slate-600">
+                    {item.tokenised.redacted_memo || "(empty)"}
+                  </pre>
+                </div>
+              </div>
+              <p className="mt-1.5 font-mono text-[11px] text-slate-500">
+                acct {item.tokenised.acct_hash}…{item.tokenised.acct_last4}
+                {item.tokenised.device_hash ? ` · device ${item.tokenised.device_hash.slice(0, 8)}…` : ""}
+                {item.tokenised.ip_prefix ? ` · ${item.tokenised.ip_prefix}` : ""}
+                {typeof item.tokenised.amount_inr === "number" ? ` · ₹${item.tokenised.amount_inr}` : ""}
+              </p>
+            </Section>
           ) : null}
 
           {item.l2 ? (

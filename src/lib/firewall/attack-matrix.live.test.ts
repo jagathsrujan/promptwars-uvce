@@ -4,6 +4,11 @@
 // Writes a markdown report (input, verdict, category, layer, latency) to
 // $COMMANDCODE_SCRATCHPAD/attack-matrix-report.md — the source for
 // docs/architecture-deck.md's attack-matrix table.
+//
+// The matrix pins the Phase 3 fallback path: LAYA_BASE_URL is force-unset
+// here so a local Ollama gatekeeper (coarse categories, preempts the L2-down
+// simulation) can never disturb the 25/25. The local cascade is proven
+// separately by laya-live.live.test.ts (run it with Laya configured).
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -24,6 +29,11 @@ function loadEnvLocal() {
 }
 
 loadEnvLocal();
+
+// Pin the fallback path for the matrix (see header): a locally configured
+// Laya would preempt layers and blur categories with its coarse 1.5b scores.
+delete process.env.LAYA_BASE_URL;
+delete process.env.LAYA_MODEL;
 
 const { runFirewall } = await import("./pipeline");
 type FirewallDecision = Awaited<ReturnType<typeof runFirewall>>;

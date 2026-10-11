@@ -57,10 +57,10 @@ export const HOSTILE_THREAT_CATEGORIES: readonly ThreatCategory[] = [
   "SOCIAL_ENGINEERING",
 ];
 
-export const DECIDING_LAYERS = ["L0", "L1", "L2", "L3", "FAIL_CLOSED"] as const;
+export const DECIDING_LAYERS = ["L0", "L1", "L2", "L3", "FAIL_CLOSED", "LAYA_LOCAL", "JEV_CLOUD"] as const;
 export type DecidingLayer = (typeof DECIDING_LAYERS)[number];
 
-export type FirewallStatus = "APPROVED" | "BLOCKED";
+export type FirewallStatus = "APPROVED" | "BLOCKED" | "REVIEW";
 export type FirewallSurface = "chat" | "memo" | "console" | "confirm";
 /** Messages and console runs are requests; memos are free text attached to one. */
 export type FirewallInputKind = "message" | "memo";
@@ -144,7 +144,7 @@ export type L2Analysis = {
   raw: string;
 };
 
-export type FirewallFailureLayer = "jev" | "l2" | null;
+export type FirewallFailureLayer = "jev" | "l2" | "laya" | null;
 
 /** Everything a single run produced — the verdict plus the evidence behind it. */
 export type FirewallDecision = {
@@ -169,6 +169,15 @@ export type FirewallDecision = {
   failure_layer: FirewallFailureLayer;
   ok: boolean;
   latency_ms: number;
+  /* Phase 4 cascade evidence (absent on the Phase 3 fallback path). */
+  /** Local gatekeeper result — null when LAYA_BASE_URL is unset (fallback). */
+  laya?: { probs: L1Probabilities; latency_ms: number } | null;
+  /** Anonymized bundle sent to the cloud auditor — null when never escalated. */
+  tokenised?: TokenisedForJev | null;
+  /** Adaptive per-user boost applied to the composite (0 when cold/absent). */
+  adaptive_boost?: number;
+  /** List membership resolved by the caller (null on console runs — exempt). */
+  list_hits?: ListHits | null;
 };
 
 /* Scoring + routing ------------------------------------------------------------- */
@@ -213,6 +222,58 @@ export const JEV_QUESTION_KEYS = [
   "social_pressure",
 ] as const;
 export type JevQuestionKey = (typeof JEV_QUESTION_KEYS)[number];
+
+/* Phase 4 cascade — anonymized cloud-auditor bundle + trust signals ------------- */
+
+/** Velocity-only features: counts and aggregates, never raw PII. */
+export type VelocityFeatures = {
+  count_24h: number;
+  sum_24h: number;
+  distinct_cp: number;
+  new_beneficiary_bool: boolean;
+  baseline_z: number;
+};
+
+/**
+ * The anonymized bundle Jev (cloud auditor) sees — raw name/phone/email/
+ * ip/device_id/account numbers NEVER leave the VPC. Hashes are
+ * HMAC_SHA256(DAILY_SALT) truncated to 16 hex chars plus a last-4 suffix
+ * where a human still needs to disambiguate; the memo is PII-redacted and
+ * head+tail capped (same 400+100 shape as classifierState).
+ */
+export type TokenisedForJev = {
+  acct_hash: string;
+  acct_last4: string;
+  counterparty_hash: string | null;
+  device_hash: string | null;
+  email_hash: string | null;
+  phone_hash: string | null;
+  ip_prefix: string | null;
+  asn_bucket: string | null;
+  city_code: string | null;
+  postal_prefix: string | null;
+  addr_mismatch: boolean | null;
+  bin_tier: string | null;
+  pan_last4: string | null;
+  amount_inr: number | null;
+  hour_bucket: string | null;
+  velocity_features: VelocityFeatures | null;
+  redacted_memo: string;
+};
+
+/** PayPal-style list membership resolved before any model call. */
+export type ListHits = {
+  blocklisted: boolean;
+  allowlisted: boolean;
+  reviewlisted: boolean;
+};
+
+/** Trust conjunction for the Laya fast-approve path. */
+export type CascadeTrust = {
+  allowlistedSalary: boolean;
+  knownDevice: boolean;
+  knownBeneficiary: boolean;
+};
 
 /** One-sentence, user-facing explanations for deterministic blocks. */
 export const BLOCK_EXPLANATIONS: Record<ThreatCategory, string> = {

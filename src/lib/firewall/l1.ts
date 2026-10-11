@@ -22,7 +22,7 @@ import type { L1Probabilities } from "./types";
 
 export class FirewallUnavailableError extends Error {
   constructor(
-    public readonly layer: "jev" | "l2",
+    public readonly layer: "jev" | "l2" | "laya",
     message: string,
   ) {
     super(message);
