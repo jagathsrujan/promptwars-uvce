@@ -378,3 +378,31 @@ Final report: what works end-to-end, the full attack-matrix table (input, verdic
 **Product-prompt changes logged:** `assistant-system-prompt.md` → v2 (added SECURITY PIPELINE section); `firewall-classifier-prompt.md` added.
 
 ---
+
+### 6. Temporary L1 Decisions-API fallback — 2026-10-11
+
+**Prompt:**
+
+```text
+Wire a temporary Decisions-API fallback for L1 jev in src/lib/firewall/l1.ts.
+
+Context: L1 currently calls POST https://api.commandcode.ai/provider/v1/systemone with COMMANDCODE_API_KEY and model "typesafe/jev", expecting { answers }. I have a temporary direct key for https://decisions-api.dev (verified working 11 Oct 2026) until the official provider key arrives.
+
+Requirements:
+1. If COMMANDCODE_API_KEY is set, keep using the provider path exactly as today (primary). Only when it is missing/unset AND DECISIONS_API_KEY is set, use the fallback — never prefer the fallback when the primary key exists.
+2. Fallback request: POST https://decisions-api.dev/v1/systemone, headers Authorization: Bearer $DECISIONS_API_KEY, Content-Type: application/json, and a browser-like User-Agent (default Python/undici UAs get Cloudflare 403 error 1010 — verified). Body: { model: "typesafe/jev-1.13", state, questions: L1_QUESTIONS }. Do NOT send x-cmd-zdr.
+3. Fallback response shape is { code, message, data: { result: { answers }, creditsUsed } } — accept only code === 0, then pass data.result (or data.result.answers-wrapped) into the existing parseJevAnswers. Any non-0 code, non-200, timeout, or unparseable body throws FirewallUnavailableError("jev", ...) so the pipeline still fails closed.
+4. Raise the fallback timeout to 10000ms (direct API measured 3.4–5.7s vs the 3000ms provider budget); keep the provider path at 3000ms.
+5. Env plumbing: add DECISIONS_API_KEY= to .env.example with a comment marking it temporary (server-side only, never NEXT_PUBLIC_, never committed, never logged), and read it only via process.env in the server route path.
+6. Keep parseJevAnswers, L1_QUESTIONS, JEV_MODEL_ID, the fail-closed pipeline behavior, and all verdict thresholds untouched.
+7. Docs: one-line note in docs/architecture-deck.md that L1 has a temporary direct-API fallback, and log the change in prompts/vibe-coding/prompt-log.md per AGENTS.md.
+8. Verify: npm run typecheck, npm run test, plus one live node fetch through the fallback path asserting L1Probabilities parses.
+
+Do NOT paste or commit any key value — read it only from the environment.
+```
+
+**What it produced:** Temporary L1 fallback wired into `src/lib/firewall/l1.ts` — provider path unchanged and preferred; when `COMMANDCODE_API_KEY` is missing and `DECISIONS_API_KEY` is set, L1 posts to `POST https://decisions-api.dev/v1/systemone` (model `typesafe/jev-1.13`, browser-like User-Agent, no `x-cmd-zdr`, 10 s budget), accepts only `code === 0` and feeds `data.result` into the existing `parseJevAnswers` (fail-closed `FirewallUnavailableError` otherwise). `parseJevAnswers`, `L1_QUESTIONS`, `JEV_MODEL_ID`, thresholds, and pipeline behavior untouched. Env plumbing (`.env.example`), one-line deck note, this log entry. Verified: `npm run typecheck`, `npm run test`, plus a live fallback fetch asserting `L1Probabilities` parses. No key value pasted or committed.
+
+**Files touched:** `src/lib/firewall/l1.ts`, `.env.example`, `docs/architecture-deck.md`, `prompts/vibe-coding/prompt-log.md`
+
+---

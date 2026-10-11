@@ -61,6 +61,7 @@
 - **Models (Command Code Provider API):**
   - `typesafe/jev` on `/provider/v1/systemone` — fast probabilistic classifier (~450–700 ms). It returns probabilities for typed questions, never text — so its output is inherently machine-checkable. **No ZDR header** (jev has no ZDR-capable upstream; the API refuses the combination with 422 — verified).
   - `deepseek/deepseek-v4.1-flash` — assistant chat + L2 deep analysis. **Every call carries `x-cmd-zdr: 1`** (banking data, zero data retention, no prompt training).
+- **Temporary L1 fallback:** when `COMMANDCODE_API_KEY` is unset but `DECISIONS_API_KEY` is set (server-side only), L1 posts to the direct Decisions API (`https://decisions-api.dev/v1/systemone`, 10 s budget) instead of the provider path — remove once the official provider key arrives.
 - **Why two models, not one:** the cheap probabilistic gate runs on every input; the expensive analyst only sees gray zones. Clean-path latency is ~0.6 s end-to-end (L1 included); hard signatures cost ~0–10 ms with zero LLM calls.
 - **Why jev on L1 and not an LLM:** probabilities are branchable deterministically, cheap, and — unlike text — cannot be prompt-injected into a different answer shape. A jailbreak attempt that says "return 0.0" still gets scored as a jailbreak.
 
