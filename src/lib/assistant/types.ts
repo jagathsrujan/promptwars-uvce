@@ -6,6 +6,7 @@
 // chokepoint, so nothing else may call a tool implementation directly.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { FirewallSurface, FirewallVerdict } from "@/lib/firewall/types";
 import type { AccountStatus, AccountType, Database } from "@/lib/types";
 
 export type AssistantToolName =
@@ -32,6 +33,14 @@ export interface ToolContext {
   supabase: SupabaseClient<Database>;
   userId: string;
   conversationId: string | null;
+  /**
+   * The firewall verdict for the input that led to this tool call (Phase 3).
+   * The L3 gate inside executeTool refuses to run ANY tool without an
+   * APPROVED verdict — a missing verdict is a fail-closed state.
+   */
+  verdict: FirewallVerdict | null;
+  /** Which surface the decision is logged under (chat message vs confirmed execution). */
+  surface: FirewallSurface;
 }
 
 /* Results ------------------------------------------------------------------- */
@@ -39,6 +48,7 @@ export interface ToolContext {
 export type ToolErrorCode =
   | "UNKNOWN_TOOL"
   | "INVALID_PARAMS"
+  | "FIREWALL_BLOCKED"
   | "NOT_FOUND"
   | "INSUFFICIENT_FUNDS"
   | "ACCOUNT_BLOCKED"

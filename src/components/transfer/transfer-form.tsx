@@ -21,8 +21,11 @@ import {
   IconCheckCircle,
   IconChevronLeft,
   IconShield,
+  IconShieldAlert,
 } from "@/components/icons";
 import { Spinner } from "@/components/icons";
+import { VerdictJson } from "@/components/firewall/verdict-json";
+import type { FirewallVerdict } from "@/lib/firewall/types";
 
 type Step = "details" | "review" | "success";
 
@@ -42,6 +45,7 @@ export function TransferForm({
 
   const [step, setStep] = useState<Step>("details");
   const [error, setError] = useState<string | null>(null);
+  const [firewall, setFirewall] = useState<FirewallVerdict | null>(null);
 
   const [fromId, setFromId] = useState(accounts[0]?.id ?? "");
   const [mode, setMode] = useState<"beneficiary" | "new">(
@@ -74,6 +78,7 @@ export function TransferForm({
   function validateAndReview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setFirewall(null);
 
     if (!fromAccount) {
       setError("Choose an account to transfer from.");
@@ -116,6 +121,7 @@ export function TransferForm({
   function confirmTransfer() {
     if (amountValue === null || !fromAccount) return;
     setError(null);
+    setFirewall(null);
     startTransition(async () => {
       const res = await performTransferAction({
         fromAccountId: fromAccount.id,
@@ -130,7 +136,12 @@ export function TransferForm({
 
       if (!res.ok) {
         setError(res.error);
-        toast({ variant: "error", title: "Transfer failed", description: res.error });
+        setFirewall(res.firewall ?? null);
+        toast({
+          variant: "error",
+          title: res.firewall ? "Blocked by the AI firewall" : "Transfer failed",
+          description: res.error,
+        });
         return;
       }
 
@@ -148,6 +159,7 @@ export function TransferForm({
   function resetForAnother() {
     setStep("details");
     setError(null);
+    setFirewall(null);
     setResult(null);
     setAmount("");
     setAmountValue(null);
@@ -218,6 +230,21 @@ export function TransferForm({
         </p>
 
         {error ? <ErrorAlert message={error} className="mt-4" /> : null}
+
+        {firewall ? (
+          <div className="mt-3 overflow-hidden rounded-xl border border-red-200">
+            <div className="flex items-center gap-2 border-b border-red-100 bg-red-50 px-3.5 py-2.5">
+              <IconShieldAlert className="h-4 w-4 shrink-0 text-red-600" />
+              <p className="text-xs font-semibold text-red-800">
+                Blocked by the AI firewall — this transfer was refused and nothing moved
+              </p>
+            </div>
+            <div className="space-y-2 bg-white p-3.5">
+              <p className="text-xs leading-relaxed text-red-700">{firewall.explanation}</p>
+              <VerdictJson verdict={firewall} />
+            </div>
+          </div>
+        ) : null}
 
         <dl className="mt-5 divide-y divide-slate-100 rounded-xl border border-slate-200">
           <div className="flex items-center justify-between gap-4 px-4 py-3">

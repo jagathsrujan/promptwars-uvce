@@ -27,6 +27,10 @@ export function getAssistantModel() {
       name: "commandcode",
       baseURL: COMMANDCODE_BASE_URL,
       apiKey,
+      // Phase 3: every deepseek call carries the ZDR opt-in — banking data,
+      // zero data retention, no prompt training. (Never sent to /systemone:
+      // jev has no ZDR upstream and the API refuses the combination with 422.)
+      headers: { "x-cmd-zdr": "1" },
     });
   }
   return cachedProvider.chatModel(ASSISTANT_MODEL_ID);

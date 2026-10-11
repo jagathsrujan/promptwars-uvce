@@ -21,6 +21,8 @@ import {
   Spinner,
 } from "@/components/icons";
 import { ToolPartCard, type ToolPartLike } from "@/components/assistant/tool-cards";
+import { FirewallChip } from "@/components/firewall/verdict-json";
+import type { FirewallVerdict } from "@/lib/firewall/types";
 
 const SUGGESTIONS = [
   "What's my balance?",
@@ -130,6 +132,17 @@ function MessageParts({
             >
               {renderInlineMarkdown(part.text)}
             </div>
+          );
+        }
+        if (part.type === "data-firewall") {
+          const data = (part as { data?: { verdict?: FirewallVerdict; latency_ms?: number } }).data;
+          if (!data?.verdict) return null;
+          return (
+            <FirewallChip
+              key={`firewall-${index}`}
+              verdict={data.verdict}
+              latencyMs={data.latency_ms}
+            />
           );
         }
         if (part.type === "step-start") return null;

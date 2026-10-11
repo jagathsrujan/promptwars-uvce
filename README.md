@@ -14,7 +14,7 @@
 |---|---|---|
 | **1. Banking simulator** | A fully working retail internet-banking app (Next.js + Supabase): accounts, atomic transfers, deposits/withdrawals, statements, cards, beneficiaries, notifications. **No AI features.** | **Built and verified end-to-end** (see "What's verified" below) |
 | **2. Conversational assistant with real tool access** | An in-app banking assistant (deepseek/deepseek-v4.1-flash via the Command Code Provider API + Vercel AI SDK) that reads real data (balances, statements, beneficiaries, cards) and can move real money through Phase 1's RPCs — with a human confirmation tap required for every money/account action. | **Built and verified end-to-end** (transfer executed via chat = identical ledger + notifications to the Phase 1 form) |
-| **3. Blue-team AI firewall** | Intercepts, analyzes and sanitizes untrusted input (free-text requests, memos) before any tool executes. Deterministic JSON verdict: `status` (APPROVED/BLOCKED), `risk_score`, `threat_category`, `explanation`. | Next — layered on the deployed Phase 2 chokepoint |
+| **3. Blue-team AI firewall** | Intercepts, analyzes and sanitizes untrusted input (free-text requests, memos) before any tool executes. Deterministic JSON verdict: `status` (APPROVED/BLOCKED), `risk_score`, `threat_category`, `explanation`. Four layers: L0 signatures → L1 `typesafe/jev` probabilities → L2 deepseek deep analysis on escalations → L3 execution guardrails. Fail closed everywhere. | **Built and verified** — 25/25 live attack-matrix cases correct; console at `/firewall` |
 
 The firewall needs something real to protect. Phase 1 is that something: a banking backend where tool calls genuinely move money in an atomic, auditable ledger — so a blocked injection means a transaction that provably never happened.
 
@@ -43,6 +43,15 @@ Against the live Supabase-backed app with a real model (Command Code Provider AP
 - "pay Rahul 500 from savings with memo dinner" → assistant resolved *savings* to the right account, *Rahul* to his saved beneficiary, and proposed a confirmation card; **"yes go ahead" in chat did not execute** (assistant: "I can't execute it from chat — tap Confirm"); tapping Confirm produced `TXN-20261011-1FA241` with the receipt card, and Rahul's side showed the mirrored `TRANSFER_IN` row plus the "Money received" notification — byte-identical in shape to the Phase 1 transfer form.
 - SQL suite (`supabase/tests/verify_chat.sql`) proves: conversations/chat messages RLS isolation, `confirmation_tokens` has **no direct client access**, single-use + 5-minute TTL + user binding enforced by the token RPCs, cross-user redemption rejected without consuming the token, and cascade integrity.
 - `COMMANDCODE_API_KEY` verified absent from the client bundles (`grep` over `.next/static`).
+
+### Phase 3 verified end-to-end (the firewall)
+
+- **Live attack matrix — 25/25 cases behaved exactly as expected** (`npm run test:live` runs the real pipeline: L0 → jev → deepseek). Every attack preset is BLOCKED with the correct category (injection, jailbreak, roleplay, zero-width, base64, homoglyph, exfiltration, social engineering, mixed, memo attacks ×3 → `PROMPT_INJECTION`/`JAILBREAK`/`ROLEPLAY_ATTACK`/`HIDDEN_INSTRUCTION`/`DATA_EXFILTRATION`/`SOCIAL_ENGINEERING`); legit requests approve and route; the ambiguous preset blocks as `AMBIGUOUS_INPUT`; `show me Priya's balance` is blocked as `DATA_EXFILTRATION`. L0 blocks cost ~0–10 ms with zero LLM calls; the clean path adds ~0.6 s (one jev call); the full table lives in [`docs/architecture-deck.md`](docs/architecture-deck.md).
+- **Fail-closed is verified, not asserted**: with the “jeV classifier down” / “Deep analysis (L2) down” simulation switches in the console, verdicts come back BLOCKED with `deciding_layer: FAIL_CLOSED` — a classifier outage can never become an approval.
+- **Form memos are scanned** (L0 + L1) before `perform_transfer`; an attack memo refuses the transfer and renders the verdict JSON in the form. Chat tool-call memos are re-scanned at proposal *and* execution.
+- **Guardrails are live**: 30 chat messages / 5 min, 10 executed money ops / hour, and 5 hostile blocks in 10 min → 15-minute money-tool lockout (read-only chat keeps working). Every decision — input, verdict JSON, per-layer signals, raw jev probabilities, L2 reasoning, latency — lands in `firewall_logs` and the console feed at `/firewall`.
+- **RLS verified on the hosted database** with two real users: cross-user read returns empty, a forged insert is rejected (403), delete is rejected (403).
+- 72 unit tests cover the pure layers (normalizer, signatures, weights, decision table, lockout math): `npm test`.
 
 ### Phase 1 verified end-to-end (not just claimed)
 
@@ -73,6 +82,7 @@ Verified against a local Postgres + GoTrue + PostgREST stack (a hosted Supabase 
    - `supabase/migrations/20261011000003_functions.sql`
    - `supabase/migrations/20261011000004_chat.sql` (Phase 2 assistant: conversations, chat messages, confirmation tokens)
    - `supabase/migrations/20261011000005_chat_client_id.sql`
+   - `supabase/migrations/20261011000006_firewall.sql` (Phase 3 firewall audit log + RLS)
    - `supabase/seed.sql`
    
    (Or, with the Supabase CLI linked to the project: `supabase db push` runs the migrations; then paste `supabase/seed.sql` in the SQL Editor. The seed is idempotent — safe to re-run to reset the demo data.)
@@ -110,6 +120,8 @@ Other commands:
 ```bash
 npm run build      # production build (passes with no env vars set)
 npm run typecheck  # tsc --noEmit
+npm test           # 72 unit tests: L0 normalizer, signatures, weights, decision table, lockout
+npm run test:live  # live attack matrix (needs COMMANDCODE_API_KEY): real jev + deepseek calls
 ```
 
 ## Deploy to Vercel

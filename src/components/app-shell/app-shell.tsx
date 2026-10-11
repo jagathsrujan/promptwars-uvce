@@ -10,6 +10,7 @@ import {
   IconDashboard,
   IconMenu,
   IconSettings,
+  IconShieldAlert,
   IconSparkles,
   IconStatement,
   IconTransfer,
@@ -22,6 +23,7 @@ import { AssistantPanel } from "@/components/assistant/assistant-panel";
 const NAV = [
   { href: "/dashboard", label: "Dashboard", Icon: IconDashboard },
   { href: "/assistant", label: "Assistant", Icon: IconSparkles },
+  { href: "/firewall", label: "AI Firewall", Icon: IconShieldAlert },
   { href: "/transfer", label: "Transfer", Icon: IconTransfer },
   { href: "/transactions", label: "Transactions", Icon: IconStatement },
   { href: "/beneficiaries", label: "Beneficiaries", Icon: IconUsers },

@@ -8,10 +8,15 @@ import {
   MEMO_MAX_LENGTH,
   parseAmount,
 } from "@/lib/constants";
+import { logDecision } from "@/lib/firewall/logs";
+import { checkMoneyAllowance } from "@/lib/firewall/l3";
+import { runFirewall, simpleDecision } from "@/lib/firewall/pipeline";
+import { approvedVerdict } from "@/lib/firewall/verdict";
+import type { FirewallVerdict } from "@/lib/firewall/types";
 
 export type TransferResult =
   | { ok: true; reference: string; newBalance: number }
-  | { ok: false; error: string };
+  | { ok: false; error: string; firewall?: FirewallVerdict };
 
 function friendlyRpcError(message: string): string {
   if (/deadlock/i.test(message)) {
@@ -61,6 +66,35 @@ export async function performTransferAction(input: {
     }
   }
 
+  // Phase 3: the memo is untrusted free text that lands on both ledgers and is
+  // visible to the counterparty — it goes through the firewall (L0 + L1)
+  // BEFORE any money moves. A hostile memo refuses the whole transfer, and the
+  // verdict JSON is shown in the UI.
+  if (memo) {
+    const decision = await runFirewall({ text: memo, surface: "memo", kind: "memo" });
+    await logDecision(supabase, user.id, decision);
+    if (decision.verdict.status === "BLOCKED") {
+      return { ok: false, error: decision.verdict.explanation, firewall: decision.verdict };
+    }
+  }
+
+  // Phase 3 L3: the same money-operation budget and hostile-block lockout the
+  // assistant tools respect — the form is not a side door.
+  const allowance = await checkMoneyAllowance(supabase, user.id);
+  if (!allowance.ok) {
+    await logDecision(
+      supabase,
+      user.id,
+      simpleDecision({
+        text: `[form:transfer] ₹${parsed.value} to ••••${toAccountNumber.slice(-4)}`,
+        surface: "memo",
+        kind: "message",
+        verdict: allowance.verdict,
+      }),
+    );
+    return { ok: false, error: allowance.verdict.explanation, firewall: allowance.verdict };
+  }
+
   const { data: reference, error } = await supabase.rpc("perform_transfer", {
     from_account_id: input.fromAccountId,
     to_account_number: toAccountNumber,
@@ -72,7 +106,32 @@ export async function performTransferAction(input: {
     return { ok: false, error: friendlyRpcError(error.message) };
   }
 
-  // The transfer is committed. Saving the beneficiary is best-effort.
+  // The transfer is committed. Record it as an executed money operation (the
+  // hourly budget counts these rows), then save the beneficiary best-effort.
+  await logDecision(
+    supabase,
+    user.id,
+    simpleDecision({
+      text: `[executed:transfer_money] ₹${parsed.value} to ••••${toAccountNumber.slice(-4)} (transfer form)`,
+      surface: "memo",
+      kind: "message",
+      verdict: approvedVerdict({
+        risk_score: 0,
+        layer: "L3",
+        explanation: "Transfer executed via the transfer form after firewall screening.",
+        signals: [
+          {
+            layer: "L3",
+            rule: "form_transfer_executed",
+            weight: 0,
+            detail: "transfer form",
+          },
+        ],
+      }),
+    }),
+    { executed: true },
+  );
+
   if (input.saveBeneficiary) {
     await supabase.from("beneficiaries").insert({
       user_id: user.id,

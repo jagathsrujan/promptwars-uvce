@@ -283,6 +283,63 @@ export type Database = {
         };
         Relationships: [];
       };
+      firewall_logs: {
+        Row: {
+          id: string;
+          user_id: string;
+          surface: "chat" | "memo" | "console" | "confirm";
+          input: string;
+          status: "APPROVED" | "BLOCKED";
+          risk_score: number;
+          threat_category: string;
+          explanation: string;
+          deciding_layer: "L0" | "L1" | "L2" | "L3" | "FAIL_CLOSED";
+          signals: Json;
+          layer_details: Json;
+          intent: string | null;
+          latency_ms: number;
+          executed: boolean;
+          audit: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          surface: "chat" | "memo" | "console" | "confirm";
+          input: string;
+          status: "APPROVED" | "BLOCKED";
+          risk_score: number;
+          threat_category: string;
+          explanation: string;
+          deciding_layer: "L0" | "L1" | "L2" | "L3" | "FAIL_CLOSED";
+          signals?: Json;
+          layer_details?: Json;
+          intent?: string | null;
+          latency_ms?: number;
+          executed?: boolean;
+          audit?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          surface?: "chat" | "memo" | "console" | "confirm";
+          input?: string;
+          status?: "APPROVED" | "BLOCKED";
+          risk_score?: number;
+          threat_category?: string;
+          explanation?: string;
+          deciding_layer?: "L0" | "L1" | "L2" | "L3" | "FAIL_CLOSED";
+          signals?: Json;
+          layer_details?: Json;
+          intent?: string | null;
+          latency_ms?: number;
+          executed?: boolean;
+          audit?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -332,3 +389,4 @@ export type Card = Database["public"]["Tables"]["cards"]["Row"];
 export type Notification = Database["public"]["Tables"]["notifications"]["Row"];
 export type Conversation = Database["public"]["Tables"]["conversations"]["Row"];
 export type ChatMessage = Database["public"]["Tables"]["chat_messages"]["Row"];
+export type FirewallLog = Database["public"]["Tables"]["firewall_logs"]["Row"];

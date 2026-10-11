@@ -9,10 +9,20 @@
 //     params) and returns confirmation_required; it executes only when the
 //     confirm endpoint has redeemed that token and passes `confirmed: true`.
 //
-// Phase 3's firewall wraps this one function — nothing else may invoke a tool
-// implementation directly.
+// Phase 3: the firewall's L3 gate (guardToolCall) runs FIRST, inside this
+// function — no verdict in ctx, or a non-APPROVED one, means no tool runs.
+// The gate also re-scans tool-parameter memos (deterministically) and applies
+// the money-operation rate limits and the hostile-block lockout. Confirmed
+// executions are recorded in firewall_logs (executed = true), which is what
+// the hourly money budget counts.
+//
+// Nothing else may invoke a tool implementation directly.
 
 import { z } from "zod";
+import { guardToolCall } from "@/lib/firewall/l3";
+import { logDecision } from "@/lib/firewall/logs";
+import { simpleDecision } from "@/lib/firewall/pipeline";
+import { approvedVerdict } from "@/lib/firewall/verdict";
 import type { Json } from "@/lib/types";
 import {
   addBeneficiary,
@@ -30,7 +40,7 @@ import {
   transferProposal,
   type ProposalResult,
 } from "./implementations";
-import { strictSchemas } from "./schemas";
+import { isMoneyTool, strictSchemas } from "./schemas";
 import type {
   MoneyToolName,
   SuccessResult,
@@ -94,11 +104,12 @@ async function confirmationGated<P>(
   };
 }
 
-export async function executeTool(
+/** The tool dispatch — reachable only through executeTool's gate. */
+async function dispatchTool(
   toolName: string,
   params: unknown,
   ctx: ToolContext,
-  options?: { confirmed?: boolean },
+  confirmed: boolean,
 ): Promise<ToolResult> {
   switch (toolName) {
     /* Read tools — no confirmation. */
@@ -124,7 +135,7 @@ export async function executeTool(
         "transfer_money",
         p.data,
         ctx,
-        options?.confirmed === true,
+        confirmed,
         (d) => transferProposal(d, ctx),
         (d) => transferMoney(d, ctx),
       );
@@ -137,7 +148,7 @@ export async function executeTool(
         "deposit_cash",
         p.data,
         ctx,
-        options?.confirmed === true,
+        confirmed,
         (d) => cashProposal("DEPOSIT", d, ctx),
         (d) => cashMove("DEPOSIT", d, ctx),
       );
@@ -150,7 +161,7 @@ export async function executeTool(
         "withdraw_cash",
         p.data,
         ctx,
-        options?.confirmed === true,
+        confirmed,
         (d) => cashProposal("WITHDRAWAL", d, ctx),
         (d) => cashMove("WITHDRAWAL", d, ctx),
       );
@@ -163,7 +174,7 @@ export async function executeTool(
         "add_beneficiary",
         p.data,
         ctx,
-        options?.confirmed === true,
+        confirmed,
         (d) => addBeneficiaryProposal(d, ctx),
         (d) => addBeneficiary(d, ctx),
       );
@@ -176,7 +187,7 @@ export async function executeTool(
         "set_card_status",
         p.data,
         ctx,
-        options?.confirmed === true,
+        confirmed,
         (d) => setCardStatusProposal(d, ctx),
         (d) => setCardStatus(d, ctx),
       );
@@ -185,4 +196,72 @@ export async function executeTool(
     default:
       return toolError("UNKNOWN_TOOL", `The tool "${toolName}" does not exist.`);
   }
+}
+
+/** The audit row for a confirmed execution — what the money budget counts. */
+function executionDecision(toolName: string, params: unknown) {
+  const summary = JSON.stringify(params ?? {}).slice(0, 300);
+  return simpleDecision({
+    text: `[executed:${toolName}] ${summary}`,
+    surface: "confirm",
+    kind: "message",
+    verdict: approvedVerdict({
+      risk_score: 0,
+      layer: "L3",
+      explanation: "Confirmed execution of a previously approved proposal.",
+      signals: [
+        {
+          layer: "L3",
+          rule: "confirmed_execution",
+          weight: 0,
+          detail: toolName,
+        },
+      ],
+    }),
+  });
+}
+
+export async function executeTool(
+  toolName: string,
+  params: unknown,
+  ctx: ToolContext,
+  options?: { confirmed?: boolean },
+): Promise<ToolResult> {
+  const confirmed = options?.confirmed === true;
+
+  // Phase 3: the L3 guardrail runs before anything else — no verdict, no tool.
+  const gate = await guardToolCall({
+    toolName,
+    params,
+    verdict: ctx.verdict,
+    supabase: ctx.supabase,
+    userId: ctx.userId,
+    proposal: !confirmed,
+  });
+  if (!gate.ok) {
+    if (gate.log_block) {
+      await logDecision(
+        ctx.supabase,
+        ctx.userId,
+        simpleDecision({
+          text: `[tool:${toolName}] ${JSON.stringify(params ?? {}).slice(0, 500)}`,
+          surface: ctx.surface,
+          kind: "message",
+          verdict: gate.verdict,
+        }),
+      );
+    }
+    return toolError("FIREWALL_BLOCKED", gate.verdict.explanation);
+  }
+
+  const result = await dispatchTool(toolName, params, ctx, confirmed);
+
+  // Record confirmed executions (the hourly money budget counts these rows).
+  if (confirmed && result.status === "success" && isMoneyTool(toolName)) {
+    await logDecision(ctx.supabase, ctx.userId, executionDecision(toolName, params), {
+      executed: true,
+    });
+  }
+
+  return result;
 }

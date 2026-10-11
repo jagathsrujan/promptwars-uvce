@@ -18,8 +18,33 @@ import {
   resolveConfirmationPart,
 } from "@/lib/assistant/conversations";
 import type { ConfirmationResolution, ToolReceipt } from "@/lib/assistant/types";
+import type { FirewallVerdict } from "@/lib/firewall/types";
 
 export const maxDuration = 30;
+
+/**
+ * The verdict for a confirmed execution (Phase 3): the proposal behind this
+ * token was already screened and approved when the confirmation card was
+ * issued, and the params are frozen server-side — so the execution runs under
+ * an L3 approval, and the L3 guardrails (lockout, money budget, memo scan)
+ * still apply inside executeTool.
+ */
+const CONFIRMED_EXECUTION_VERDICT: FirewallVerdict = {
+  status: "APPROVED",
+  risk_score: 0,
+  threat_category: "NONE",
+  explanation: "Confirmed execution of a previously approved proposal.",
+  deciding_layer: "L3",
+  signals: [
+    {
+      layer: "L3",
+      rule: "confirmation_token_redeemed",
+      weight: 0,
+      detail: "single-use confirmation token redeemed by the user",
+    },
+  ],
+  sanitized_intent: null,
+};
 
 const bodySchema = z.object({
   conversationId: z.string().uuid(),
@@ -98,7 +123,18 @@ export async function POST(req: Request) {
     return Response.json({ ok: true, message, resolution: { state: "canceled" } });
   }
 
-  const result = await executeTool(toolName, params, { supabase, userId: user.id, conversationId: conversation }, { confirmed: true });
+  const result = await executeTool(
+    toolName,
+    params,
+    {
+      supabase,
+      userId: user.id,
+      conversationId: conversation,
+      verdict: CONFIRMED_EXECUTION_VERDICT,
+      surface: "confirm",
+    },
+    { confirmed: true },
+  );
 
   if (result.status === "success") {
     await resolveConfirmationPart(supabase, conversation, token, { state: "confirmed" });

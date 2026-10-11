@@ -236,6 +236,16 @@ export function IconShield(props: IconProps) {
   );
 }
 
+export function IconShieldAlert(props: IconProps) {
+  return (
+    <svg {...svgProps(props)}>
+      <path d="M20 13c0 5-3.5 7.5-7.7 8.9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1 1 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1Z" />
+      <path d="M12 8v4" />
+      <path d="M12 15h.01" />
+    </svg>
+  );
+}
+
 export function IconWallet(props: IconProps) {
   return (
     <svg {...svgProps(props)}>

@@ -13,5 +13,6 @@ This directory holds the LLM configuration prompts that **ship inside the deploy
 
 | File | Role | Status |
 |---|---|---|
-| `assistant-system-prompt.md` | System prompt of the BankSim Assistant (`/api/chat`, deepseek/deepseek-v4.1-flash, temperature 0.2) | **Active** — Phase 2, shipped |
+| `assistant-system-prompt.md` | System prompt of the BankSim Assistant (`/api/chat`, deepseek/deepseek-v4.1-flash, temperature 0.2) | **Active · v2** — Phase 2, hardened in Phase 3 (SECURITY PIPELINE section) |
+| `firewall-classifier-prompt.md` | L2 deep-analysis classifier of the AI firewall (`src/lib/firewall/l2.ts`, deepseek/deepseek-v4.1-flash, temperature 0.1, `x-cmd-zdr: 1`) | **Active** — Phase 3, shipped |
 | `system-prompt.md` | Early placeholder for the product system prompt | Not used — superseded by `assistant-system-prompt.md` |
