@@ -1,0 +1,33 @@
+# Node
+node_modules/
+dist/
+build/
+*.log
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Env — keep the template, ignore everything else
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Supabase CLI local artifacts
+supabase/.temp/
+supabase/.branches/
+
+# Command Code session artifacts
+.commandcode/
