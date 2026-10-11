@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,11 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const promptsDir = join(here, "..", "..", "prompts");
 const outFile = join(here, "..", "lib", "firewall", "prompts.generated.ts");
+
+if (!existsSync(promptsDir)) {
+  console.log("sync-prompts: prompts/ not found (packaged deploy) — keeping the committed prompts.generated.ts");
+  process.exit(0);
+}
 
 function read(name) {
   const content = readFileSync(join(promptsDir, name), "utf8");
