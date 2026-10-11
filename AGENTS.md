@@ -57,7 +57,7 @@ src/                 <- application code (stack-agnostic until chosen)
 - Build: `npm run build` · Typecheck: `npm run typecheck`
 - SQL test suite: apply `supabase/tests/local_harness.sql` → `supabase/migrations/*` → `supabase/seed.sql` (twice) → `supabase/tests/verify.sql` on any plain Postgres (see README)
 - Deploy target: Vercel (+ Supabase project; run `supabase/migrations/*` then `supabase/seed.sql` in the SQL Editor)
-- Live URL: TBD
+- Live URL: **https://banksim-uvce.vercel.app** (Vercel project `banksim-uvce`, Supabase project `banksim-uvce`, region Mumbai)
 
 ## Prompt conventions
 

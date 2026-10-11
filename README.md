@@ -2,7 +2,7 @@
 
 > Hackathon entry for **PromptWars x UVCE** (Marvel @ UVCE, powered by Hack2skill) — 8-hour build sprint, **AI Security & FinTech** category.
 
-- **Live demo:** TBD (public deployment URL — must work on another device)
+- **Live demo:** **https://banksim-uvce.vercel.app** — sign in with a demo account below (password `BankSim@123`)
 - **Problem statement:** [docs/problem-statement.md](docs/problem-statement.md)
 - **Abstract:** [docs/abstract.md](docs/abstract.md)
 - **Architecture deck:** [docs/architecture-deck.md](docs/architecture-deck.md)

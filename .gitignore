@@ -31,3 +31,6 @@ supabase/.branches/
 
 # Command Code session artifacts
 .commandcode/
+
+# Vercel CLI local link
+.vercel
