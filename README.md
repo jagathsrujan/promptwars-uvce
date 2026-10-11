@@ -1,49 +1,70 @@
-# PromptWars x UVCE — Build Sprint Workspace
+# BankSim v2 — SBI-style Demo Bank with a Blue-Team AI Firewall
 
-**Event:** 11 Oct 2026, 10:00 AM – 6:00 PM (8-hour sprint, 2 scored attempts)
-**Finale:** Top 10 live defence, 12 Oct 2026 (5 min demo + 3 min arch + 2 min Q&A)
+**PromptWars × UVCE · AI Security & FinTech** — rebuilt from scratch, v2 first cut.
 
-## Quick start
+A demo banking portal where an AI assistant can move (mock) money. In **guarded mode**
+every input — including untrusted transaction memos — passes a 4-stage firewall before any
+bank tool executes. **Unprotected mode** runs the same model with no guardrails (the A/B
+baseline). **/dev** shows every decision: the prompts sent, the checker votes, the math.
 
-1. Paste the official problem statement into `PROBLEM_STATEMENT.md`
-2. Build core journey first in `web/`
-3. Log every prompt change in `prompts/`
-4. Deploy early — see `docs/submission-checklist.md`
-5. Fill `docs/abstract.md` + `docs/architecture-deck.md` from real implementation
+## Live map — what exists right now
 
-## Layout
+- [x] Design spine → `DESIGN.md` · official problem statement → `PROBLEM_STATEMENT.md`
+- [x] Prompt set v2.0 in `prompts/` (guarded agent, raw baseline, 3 parallel checkers,
+      30-case red-team corpus, CHANGELOG) — compiled into the app by `web/scripts/sync-prompts.mjs`
+- [x] Firewall core: L0 normalize + tripwires · L1 parallel checkers · L2 deterministic
+      aggregator (fail-closed) · L3 tool gate
+- [x] Mock bank + tools: balance, history, transfer quote → confirm → OTP
+- [x] Portal UI: login, dashboard, transfer, history + chat dock + guarded/unprotected
+      toggle + demo reset
+- [x] Dev panel `/dev`: live per-request traces + prompt library viewer
+- [x] Eval runner `POST /api/eval` — **stub engine: recall 18/18 attacks · false-block 0/9
+      benign · edge 2/2 fail-closed**
+- [ ] Real-model eval numbers (paste a key, re-run eval)
+- [ ] Breakage pass (adversarial hunt) → Optimize → Deploy + submit
 
-```
-PROBLEM_STATEMENT.md      ← paste official PS here at 10 AM
-web/                      ← Next.js app (frontend + /api routes, deploys to Vercel in 1 step)
-prompts/                  ← versioned system/user prompts + eval set (REQUIRED deliverable)
-docs/
-  abstract.md             ← written abstract deliverable
-  architecture-deck.md    ← deck outline (system, prompt flow, defensive measures)
-  demo-script.md          ← 10-min finale script
-  submission-checklist.md ← pre-6PM verification
-```
-
-## Run locally
+## Run it
 
 ```bash
 cd web
 npm install
-cp .env.example .env.local
 npm run dev
 ```
 
-Health check: http://localhost:3000/api/health
+Open **http://localhost:3001** (port 3000 on this machine is used by the Excalidraw MCP server).
 
-## Deploy (do this BEFORE 4 PM)
+No keys needed: without `LLM_API_KEY` everything runs on a deterministic offline stub.
+For a real model, copy `web/.env.example` → `web/.env.local` and set any OpenAI-compatible
+provider (OpenAI, Gemini compat, Groq, OpenRouter, …):
 
-```bash
-cd web
-npx vercel --prod
+```
+LLM_API_KEY=…
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL=gpt-4o-mini
 ```
 
-Copy the public URL into your Hack2Skill submission. Verify in a private window.
+## Three demo beats
 
-## Cutoff
+1. **Unprotected mode** → run the “Poisoned memo” chip → the assistant follows the injected memo
+2. **Guarded mode** → same attack → **BLOCKED** with risk score, category, and reasons
+3. **/dev** → watch the three checker prompts vote, the aggregator math, and the tool gate
 
-6:00 PM sharp, platform auto-locks. Submit with 30-min buffer (target 5:30 PM).
+## Structure
+
+```
+prompts/                     ← the deliverable: every prompt, the corpus, the changelog
+web/scripts/sync-prompts.mjs ← prompts/*.md → lib/firewall/prompts.generated.ts
+web/lib/firewall/            ← L0 normalize · checkers · aggregator · gate · llm + stub
+web/lib/bank/                ← mock ledger + tool implementations
+web/app/api/bank/            ← ONE function: state · chat · quote · confirm · reset
+web/app/api/                 ← …plus dev/prompts · eval · health
+web/app/page.tsx             ← portal · web/app/dev/page.tsx ← dev panel
+```
+
+## Notes
+
+- All stateful ops live in one route (`/api/bank`) because serverless functions don't
+  share memory — separate routes would each hold their own ledger copy.
+- `/dev` traces are stored in your browser (localStorage); every guarded response carries
+  its full trace, so the panel works on any host.
+- The previous sprint build is preserved at git branch `archive/banksim-v1`.

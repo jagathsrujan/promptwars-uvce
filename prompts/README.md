@@ -1,13 +1,24 @@
-# Configuration Prompts (REQUIRED deliverable — version every change)
+# Prompt Library — REQUIRED deliverable (judges score "Prompt & AI rigor")
 
-All prompts the app uses must live here and be committed. Judges score "Prompt & AI rigor" (20%).
+Every prompt the app uses lives here as plain markdown. The app compiles these files
+into TypeScript at dev/build time (`web/scripts/sync-prompts.mjs`), so what you read
+here is exactly what the model receives — no drift between docs and runtime.
 
 ## Files
-- `system-prompt.md` — the system prompt sent to the model
-- `eval-set.json` — test inputs incl. normal / ambiguous / invalid / adversarial
-- `CHANGELOG.md` — every prompt edit with reason + result
+- `agent-guarded.md` — system prompt for guarded mode (behind the firewall)
+- `agent-raw.md` — system prompt for unprotected mode (A/B baseline)
+- `checker-threat.md` — L1 checker: injection / jailbreak / roleplay
+- `checker-intent.md` — L1 checker: genuine banking intent vs scam / social engineering
+- `checker-memo.md` — L1 checker: memo-as-instruction smuggling
+- `eval-set.json` — red-team corpus run by `/api/eval` (benign / attacks / ambiguous / edge)
+- `CHANGELOG.md` — every prompt change: before → after, reason, eval numbers
 
-## Rules during sprint
-1. Never edit prompts only in code — update `system-prompt.md` first, then wire in.
-2. Log each version in CHANGELOG with before → after + eval delta.
-3. Keep 1 edge-case demo input that reliably shows guardrails working.
+## Placeholders
+The runner substitutes slots before each call:
+- `<<<INPUT>>>` — normalized user message (with memo block appended when present)
+- `<<<MEMO>>>` — the untrusted memo text alone
+
+## Rules
+1. Edit the prompt here first, then any code that consumes it — never the other way around.
+2. Every edit gets a CHANGELOG row with eval numbers (recall / false-block) from `/api/eval`.
+3. Keep one edge-case demo input in the corpus that reliably shows the guardrails working.
