@@ -406,3 +406,20 @@ Do NOT paste or commit any key value — read it only from the environment.
 **Files touched:** `src/lib/firewall/l1.ts`, `.env.example`, `docs/architecture-deck.md`, `prompts/vibe-coding/prompt-log.md`
 
 ---
+
+### 7. README rewrite for AI + human judges — 2026-10-11
+
+**Prompt:**
+
+```text
+read the readme of the repo and come up with ways to make it more ai review friendly and get more score when ai judge goes through it also make it easy to read and understand for human judges
+first come up with a plan to edit
+```
+
+followed by `yes` (approve the plan and implement).
+
+**What it produced:** README-only rewrite per `~/.commandcode/plans/banksim-readme-ai-judge-plan.md` — TL;DR + text badges + keyword line above the fold; "Try it in 60 seconds" with co-located demo creds, happy path, two attacks, and `/firewall` inspect step; phases as short subsections with tool/layer tables and verdict JSON fence; rubric-mapping table (50 marks with proof + links); verification as a category table plus numbered proof bullets; setup collapsed into `<details>`; repository structure, limitations, and docs links. No code, claims, or numbers changed.
+
+**Files touched:** `README.md`, `prompts/vibe-coding/prompt-log.md`
+
+---
