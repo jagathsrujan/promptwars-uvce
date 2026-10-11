@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { confirmQuote, createQuote, resetBank, snapshot } from "@/lib/bank/ledger";
 import { executeTool } from "@/lib/bank/tools";
+import { DEMO_USERS, SESSION_COOKIE, SESSION_TTL_MS, createSession, destroySession, getSession } from "@/lib/bank/session";
+import type { Session } from "@/lib/bank/session";
 import { runFirewall } from "@/lib/firewall";
 import { gateAction } from "@/lib/firewall/gate";
 import { engineName, llmJSON } from "@/lib/firewall/llm";
@@ -84,7 +86,20 @@ function publicVerdict(verdict: Verdict) {
   };
 }
 
-async function handleChat(body: Record<string, unknown>, started: number) {
+function sessionFromRequest(req: Request): Session | null {
+  const cookie = req.headers.get("cookie") ?? "";
+  const pair = cookie
+    .split(/;\s*/)
+    .find((c) => c.startsWith(`${SESSION_COOKIE}=`));
+  if (!pair) return null;
+  return getSession(pair.slice(SESSION_COOKIE.length + 1));
+}
+
+function unauthorized() {
+  return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+}
+
+async function handleChat(body: Record<string, unknown>, session: Session, started: number) {
   const mode = body.mode === "raw" ? "raw" : "guarded";
   const message = String(body.message ?? "").trim();
   const memo = String(body.memo ?? "").trim() || undefined;
@@ -97,7 +112,7 @@ async function handleChat(body: Record<string, unknown>, started: number) {
   if (mode === "raw") {
     const agent = await runAgent(false, message, memo);
     const toolResult = agent.action
-      ? executeTool(agent.action.name, agent.action.args, { requireOtp: false })
+      ? executeTool(agent.action.name, agent.action.args, { requireOtp: false, session })
       : null;
 
     const trace: FirewallOutcome = {
@@ -196,7 +211,7 @@ async function handleChat(body: Record<string, unknown>, started: number) {
     });
   }
 
-  const toolResult = executeTool(agent.action.name, agent.action.args, { requireOtp: gate.requireOtp });
+  const toolResult = executeTool(agent.action.name, agent.action.args, { requireOtp: gate.requireOtp, session });
   outcome.agent = {
     actionRequested: agent.action,
     actionExecuted: toolResult.ok ? toolResult.tool : null,
@@ -220,7 +235,7 @@ async function handleChat(body: Record<string, unknown>, started: number) {
   });
 }
 
-async function handleQuote(body: Record<string, unknown>, started: number) {
+async function handleQuote(body: Record<string, unknown>, session: Session, started: number) {
   const payee = String(body.payee ?? "").trim();
   const amount = Number(body.amount ?? 0);
   const memo = String(body.memo ?? "").trim() || undefined;
@@ -251,7 +266,13 @@ async function handleQuote(body: Record<string, unknown>, started: number) {
     );
   }
 
-  const quote = createQuote({ to: payee, amount, memo, requiresOtp: outcome.verdict.zone === "verify" });
+  const quote = createQuote({
+    customerId: session.customerId,
+    to: payee,
+    amount,
+    memo,
+    requiresOtp: outcome.verdict.zone === "verify",
+  });
   outcome.agent = {
     actionRequested: { name: "start_transfer", args: { to: payee, amount } },
     actionExecuted: "start_transfer",
@@ -272,8 +293,13 @@ async function handleQuote(body: Record<string, unknown>, started: number) {
   });
 }
 
-export async function GET() {
-  return NextResponse.json(snapshot());
+export async function GET(req: Request) {
+  const session = sessionFromRequest(req);
+  if (!session) return unauthorized();
+  return NextResponse.json({
+    user: { customerId: session.customerId, name: session.name },
+    ...snapshot(session.customerId),
+  });
 }
 
 export async function POST(req: Request) {
@@ -288,8 +314,42 @@ export async function POST(req: Request) {
 
   const op = String(body.op ?? "");
 
+  if (op === "login") {
+    const customerId = String(body.customerId ?? "").trim();
+    const password = String(body.password ?? "");
+    const user = DEMO_USERS[customerId];
+    if (!user || user.password !== password) {
+      return NextResponse.json({ error: "invalid credentials" }, { status: 401 });
+    }
+    const session = createSession(user);
+    const res = NextResponse.json({ ok: true, user: { customerId: user.customerId, name: user.name } });
+    res.cookies.set(SESSION_COOKIE, session.token, {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: Math.floor(SESSION_TTL_MS / 1000),
+    });
+    return res;
+  }
+
+  if (op === "logout") {
+    const session = sessionFromRequest(req);
+    destroySession(session?.token);
+    const res = NextResponse.json({ ok: true });
+    res.cookies.delete(SESSION_COOKIE);
+    return res;
+  }
+
+  const session = sessionFromRequest(req);
+  if (!session) return unauthorized();
+
   try {
-    if (op === "state") return NextResponse.json(snapshot());
+    if (op === "state") {
+      return NextResponse.json({
+        user: { customerId: session.customerId, name: session.name },
+        ...snapshot(session.customerId),
+      });
+    }
 
     if (op === "reset") {
       resetBank();
@@ -299,13 +359,13 @@ export async function POST(req: Request) {
     if (op === "confirm") {
       const quoteId = String(body.quoteId ?? "");
       if (!quoteId) return NextResponse.json({ error: "missing quoteId" }, { status: 400 });
-      const result = confirmQuote(quoteId, body.otp == null ? undefined : String(body.otp));
+      const result = confirmQuote(quoteId, body.otp == null ? undefined : String(body.otp), session.customerId);
       if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
       return NextResponse.json({ ok: true, quote: result.quote });
     }
 
-    if (op === "quote") return await handleQuote(body, started);
-    if (op === "chat") return await handleChat(body, started);
+    if (op === "quote") return await handleQuote(body, session, started);
+    if (op === "chat") return await handleChat(body, session, started);
 
     return NextResponse.json({ error: `unknown op "${op}"` }, { status: 400 });
   } catch (error) {

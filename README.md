@@ -15,6 +15,10 @@ baseline). **/dev** shows every decision: the prompts sent, the checker votes, t
 - [x] Firewall core: L0 normalize + tripwires · L1 parallel checkers · L2 deterministic
       aggregator (fail-closed) · L3 tool gate
 - [x] Mock bank + tools: balance, history, transfer quote → confirm → OTP
+- [x] Demo auth backend: server-side session (httpOnly cookie, 30-min TTL) created at login —
+      every financial op is bound to it, and the tool layer enforces account ownership
+      (cross-account reads are denied even in Unprotected mode — authorization lives behind
+      the tool gate, not in the prompt)
 - [x] Portal UI: login, dashboard, transfer, history + chat dock + guarded/unprotected
       toggle + demo reset
 - [x] Dev panel `/dev`: live per-request traces + prompt library viewer
@@ -55,8 +59,8 @@ LLM_MODEL=gpt-4o-mini
 prompts/                     ← the deliverable: every prompt, the corpus, the changelog
 web/scripts/sync-prompts.mjs ← prompts/*.md → lib/firewall/prompts.generated.ts
 web/lib/firewall/            ← L0 normalize · checkers · aggregator · gate · llm + stub
-web/lib/bank/                ← mock ledger + tool implementations
-web/app/api/bank/            ← ONE function: state · chat · quote · confirm · reset
+web/lib/bank/                ← mock ledger (per-customer) + demo sessions + tool implementations
+web/app/api/bank/            ← ONE function: login · logout · state · chat · quote · confirm · reset
 web/app/api/                 ← …plus dev/prompts · eval · health
 web/app/page.tsx             ← portal · web/app/dev/page.tsx ← dev panel
 ```
@@ -65,6 +69,11 @@ web/app/page.tsx             ← portal · web/app/dev/page.tsx ← dev panel
 
 - All stateful ops live in one route (`/api/bank`) because serverless functions don't
   share memory — separate routes would each hold their own ledger copy.
+- Demo auth: `demo` / `demo` logs in as customer CUS-1001 (Aarav Sharma); the session is an
+  httpOnly cookie backed by an in-memory store. A second customer (CUS-2002, Priya Nair,
+  account ACC-2002-7734) exists in the ledger but has no login — the "Cross-account probe"
+  chip shows the tool layer denying reads on her account in both modes. This is deliberate
+  fake-session realism, not real auth.
 - `/dev` traces are stored in your browser (localStorage); every guarded response carries
   its full trace, so the panel works on any host.
 - The previous sprint build is preserved at git branch `archive/banksim-v1`.

@@ -1,4 +1,4 @@
-import { createQuote, getBalance, getHistory } from "./ledger";
+import { createQuote, findAccount, getBalance, getHistory } from "./ledger";
 
 export interface ToolResult {
   ok: boolean;
@@ -7,19 +7,35 @@ export interface ToolResult {
   error?: string;
 }
 
+export interface ToolSession {
+  customerId: string;
+}
+
 const SCREENS = ["dashboard", "transfer", "history"];
+
+const AUTHZ_DENIED = "authorization denied: account does not belong to the session customer";
 
 export function executeTool(
   name: string,
   args: Record<string, unknown>,
-  opts: { requireOtp?: boolean } = {},
+  opts: { requireOtp?: boolean; session: ToolSession },
 ): ToolResult {
   switch (name) {
-    case "get_balance":
-      return { ok: true, tool: name, result: getBalance() };
+    case "get_balance": {
+      const account = typeof args.account === "string" ? args.account.trim() : "";
+      if (account && !findAccount(account, opts.session.customerId)) {
+        return { ok: false, tool: name, result: null, error: AUTHZ_DENIED };
+      }
+      return { ok: true, tool: name, result: getBalance(opts.session.customerId) };
+    }
 
-    case "get_history":
-      return { ok: true, tool: name, result: getHistory() };
+    case "get_history": {
+      const account = typeof args.account === "string" ? args.account.trim() : "";
+      if (account && !findAccount(account, opts.session.customerId)) {
+        return { ok: false, tool: name, result: null, error: AUTHZ_DENIED };
+      }
+      return { ok: true, tool: name, result: getHistory(opts.session.customerId) };
+    }
 
     case "start_transfer": {
       const to = String(args.to ?? "").trim();
@@ -29,7 +45,13 @@ export function executeTool(
       if (!Number.isFinite(amount) || amount <= 0) {
         return { ok: false, tool: name, result: null, error: "invalid amount" };
       }
-      const quote = createQuote({ to, amount, memo, requiresOtp: Boolean(opts.requireOtp) });
+      const quote = createQuote({
+        customerId: opts.session.customerId,
+        to,
+        amount,
+        memo,
+        requiresOtp: Boolean(opts.requireOtp),
+      });
       return {
         ok: true,
         tool: name,

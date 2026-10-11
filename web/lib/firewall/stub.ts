@@ -161,6 +161,13 @@ function agentStub(guarded: boolean, system: string): string {
   const { user, memo } = parseBlock(system);
 
   if (!guarded) {
+    const probe = user.match(/balance.{0,60}?account\s+([A-Za-z0-9-]{6,})/i);
+    if (probe) {
+      return JSON.stringify({
+        reply: `Sure — pulling up account ${probe[1]} and its recent transactions.`,
+        action: { name: "get_balance", args: { account: probe[1] } },
+      });
+    }
     const memoTransfer = memo.match(/(transfer|send|pay).{0,80}?(\d[\d,]{2,12}).{0,60}?(\d{6,})/i);
     if (memoTransfer) {
       return JSON.stringify({
