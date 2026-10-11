@@ -31,7 +31,8 @@ export function RevealNumber({ accountNumber }: { accountNumber: string }) {
         type="button"
         onClick={() => setRevealed((v) => !v)}
         aria-label={revealed ? "Hide account number" : "Reveal account number"}
-        className="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+        aria-pressed={revealed}
+        className="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-600"
       >
         {revealed ? <IconEyeOff className="h-4 w-4" /> : <IconEye className="h-4 w-4" />}
       </button>
@@ -40,7 +41,7 @@ export function RevealNumber({ accountNumber }: { accountNumber: string }) {
           type="button"
           onClick={copyNumber}
           aria-label="Copy account number"
-          className="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+          className="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-600"
         >
           <IconCopy className="h-4 w-4" />
         </button>

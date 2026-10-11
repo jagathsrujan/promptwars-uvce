@@ -83,6 +83,8 @@ export function BeneficiariesClient({ beneficiaries }: { beneficiaries: Benefici
         <button
           type="button"
           onClick={() => setShowForm((v) => !v)}
+          aria-expanded={showForm}
+          aria-controls="new-beneficiary-form"
           className={showForm ? buttonStyles.secondary : buttonStyles.primary}
         >
           {showForm ? <IconX className="h-4 w-4" /> : <IconPlus className="h-4 w-4" />}
@@ -93,6 +95,8 @@ export function BeneficiariesClient({ beneficiaries }: { beneficiaries: Benefici
       {showForm ? (
         <form
           onSubmit={handleAdd}
+          id="new-beneficiary-form"
+          aria-label="New beneficiary"
           className="animate-rise-in space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
           noValidate
         >

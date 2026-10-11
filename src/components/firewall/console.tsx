@@ -265,8 +265,9 @@ export function FirewallConsole({
             </p>
           </div>
           <div className="flex items-center gap-2 text-xs">
-            <span className="text-slate-500">Simulate failure:</span>
+            <span id="simulate-label" className="text-slate-500">Simulate failure:</span>
             <select
+              aria-labelledby="simulate-label"
               value={simulate}
               onChange={(event) => setSimulate(event.target.value as typeof simulate)}
               className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700"
@@ -307,6 +308,7 @@ export function FirewallConsole({
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Custom input</p>
           <div className="mt-2 flex flex-col gap-2 sm:flex-row">
             <textarea
+              aria-label="Custom firewall test input"
               value={customInput}
               onChange={(event) => setCustomInput(event.target.value)}
               rows={2}
@@ -316,6 +318,7 @@ export function FirewallConsole({
             />
             <div className="flex shrink-0 flex-col gap-2 sm:w-40">
               <select
+                aria-label="Custom input kind"
                 value={customKind}
                 onChange={(event) => setCustomKind(event.target.value as "message" | "memo")}
                 className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700"
@@ -361,6 +364,7 @@ export function FirewallConsole({
                   <button
                     type="button"
                     onClick={() => setExpandedId(expanded ? null : item.id)}
+                    aria-expanded={expanded}
                     className={cn(
                       "flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50 sm:px-5",
                       expanded && "bg-slate-50",

@@ -111,6 +111,7 @@ export function CardWidget({ card }: { card: Card }) {
           type="button"
           onClick={toggleFreeze}
           disabled={pending}
+          aria-pressed={frozen}
           className={cn(buttonStyles.secondary, "mt-4 w-full")}
         >
           {pending ? (

@@ -1,17 +1,21 @@
-// L1 — the fast probabilistic classifier (`typesafe/jev` on /systemone).
+// L1 — the fast probabilistic classifier (`typesafe/jev`).
 //
 // One call per input, five typed questions, probabilities back — never text.
 // The request deliberately does NOT carry `x-cmd-zdr`: jev has no
 // zero-data-retention upstream, and the Provider API refuses the combination
 // with a 422. ZDR applies to every deepseek call instead.
 //
-// Any failure — network, timeout (3 s provider / 10 s direct fallback),
-// non-200, non-zero direct-API code, missing or non-numeric answers —
-// throws FirewallUnavailableError, and the pipeline fails closed.
-//
-// Temporary fallback: when COMMANDCODE_API_KEY is missing but
-// DECISIONS_API_KEY is set, L1 posts to the direct Decisions API instead.
+// Dual-endpoint routing (same questions, same parser, same thresholds on both
+// paths — L1 never depends on a single endpoint):
+//   * primary: Command Code Provider API `POST /provider/v1/systemone`
+//     (`COMMANDCODE_API_KEY`, model `typesafe/jev`, 3 s budget);
+//   * secondary: direct Decisions API (`DECISIONS_API_KEY`, server-side only,
+//     model `typesafe/jev-1.13`, browser-like User-Agent, 10 s budget).
 // The provider path is always preferred when its key exists.
+//
+// Any failure — network, timeout, non-200, non-zero direct-API code, missing
+// or non-numeric answers — throws FirewallUnavailableError, and the pipeline
+// fails closed.
 
 import { COMMANDCODE_BASE_URL } from "@/lib/assistant/model";
 import type { L1Probabilities } from "./types";
@@ -29,12 +33,12 @@ export class FirewallUnavailableError extends Error {
 export const JEV_MODEL_ID = "typesafe/jev";
 export const JEV_TIMEOUT_MS = 3000;
 
-// Temporary direct-API fallback (until the official provider key arrives).
-// Server-side only; read from the environment, never committed or logged.
-export const JEV_FALLBACK_URL = "https://decisions-api.dev/v1/systemone";
-export const JEV_FALLBACK_MODEL_ID = "typesafe/jev-1.13";
-export const JEV_FALLBACK_TIMEOUT_MS = 10000;
-const FALLBACK_USER_AGENT =
+// Direct-API secondary endpoint (server-side only; read from the environment,
+// never committed or logged).
+export const JEV_DIRECT_URL = "https://decisions-api.dev/v1/systemone";
+export const JEV_DIRECT_MODEL_ID = "typesafe/jev-1.13";
+export const JEV_DIRECT_TIMEOUT_MS = 10000;
+const JEV_DIRECT_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
 export const L1_QUESTIONS = {
@@ -114,16 +118,16 @@ export async function callJev(state: string, timeoutMs = JEV_TIMEOUT_MS): Promis
     return callJevViaProvider(state, apiKey, timeoutMs);
   }
 
-  // Temporary fallback: direct Decisions API, only when the provider key is
+  // Secondary path: direct Decisions API, only when the provider key is
   // missing. Read server-side from the environment; never logged.
-  const fallbackKey = process.env.DECISIONS_API_KEY;
-  if (!fallbackKey) {
+  const directKey = process.env.DECISIONS_API_KEY;
+  if (!directKey) {
     throw new FirewallUnavailableError("jev", "COMMANDCODE_API_KEY is not configured.");
   }
   // The direct API is slower (measured 3.4–5.7 s), so the default provider
-  // budget is raised for the fallback path; an explicit override is honored.
-  const fallbackTimeout = timeoutMs === JEV_TIMEOUT_MS ? JEV_FALLBACK_TIMEOUT_MS : timeoutMs;
-  return callJevViaFallback(state, fallbackKey, fallbackTimeout);
+  // budget is raised for the secondary path; an explicit override is honored.
+  const directTimeout = timeoutMs === JEV_TIMEOUT_MS ? JEV_DIRECT_TIMEOUT_MS : timeoutMs;
+  return callJevViaDirect(state, directKey, directTimeout);
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
@@ -171,25 +175,25 @@ async function callJevViaProvider(
   }
 }
 
-async function callJevViaFallback(
+async function callJevViaDirect(
   state: string,
   apiKey: string,
   timeoutMs: number,
 ): Promise<L1Probabilities> {
   try {
     const response = await fetchWithTimeout(
-      JEV_FALLBACK_URL,
+      JEV_DIRECT_URL,
       {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
           // Browser-like UA: default undici/Python UAs get a Cloudflare 403 (1010).
-          "User-Agent": FALLBACK_USER_AGENT,
+          "User-Agent": JEV_DIRECT_USER_AGENT,
         },
         // No x-cmd-zdr: jev has no ZDR upstream (same as the provider path).
         body: JSON.stringify({
-          model: JEV_FALLBACK_MODEL_ID,
+          model: JEV_DIRECT_MODEL_ID,
           state,
           questions: L1_QUESTIONS,
         }),

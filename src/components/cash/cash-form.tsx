@@ -155,10 +155,11 @@ export function CashForm({ accounts }: { accounts: Account[] }) {
         {error ? <ErrorAlert message={error} /> : null}
 
         <div>
-          <span className={labelClass}>Transaction type</span>
-          <div className="grid grid-cols-2 gap-2">
+          <span id="txn-type-label" className={labelClass}>Transaction type</span>
+          <div className="grid grid-cols-2 gap-2" role="group" aria-labelledby="txn-type-label">
             <button
               type="button"
+              aria-pressed={direction === "DEPOSIT"}
               onClick={() => setDirection("DEPOSIT")}
               className={cn(
                 "flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition",
@@ -172,6 +173,7 @@ export function CashForm({ accounts }: { accounts: Account[] }) {
             </button>
             <button
               type="button"
+              aria-pressed={direction === "WITHDRAWAL"}
               onClick={() => setDirection("WITHDRAWAL")}
               className={cn(
                 "flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition",

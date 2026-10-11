@@ -73,6 +73,7 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
       <div className="absolute inset-0 bg-slate-900/30 backdrop-blur-[2px]" onClick={onClose} aria-hidden />
       <aside
         role="dialog"
+        aria-modal="true"
         aria-label="BankSim Assistant"
         className="animate-slide-in-right absolute inset-y-0 right-0 flex w-full flex-col bg-slate-50 shadow-2xl sm:max-w-md sm:border-l sm:border-slate-200"
       >
@@ -101,7 +102,7 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
               type="button"
               onClick={onClose}
               aria-label="Close assistant"
-              className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100"
+              className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-600"
             >
               <IconX className="h-5 w-5" />
             </button>

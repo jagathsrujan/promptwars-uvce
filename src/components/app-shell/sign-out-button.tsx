@@ -27,8 +27,9 @@ export function SignOutButton({ className, compact }: { className?: string; comp
       type="button"
       onClick={handleSignOut}
       disabled={pending}
+      aria-label={compact ? "Sign out" : undefined}
       className={cn(
-        "inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-60",
+        "inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-600 disabled:opacity-60",
         className,
       )}
     >

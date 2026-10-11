@@ -56,7 +56,7 @@ src/                 <- application code (stack-agnostic until chosen)
 - Run locally: `npm run dev` (needs `.env.local` — copy `.env.example`; see README)
 - Build: `npm run build` · Typecheck: `npm run typecheck`
 - SQL test suite: apply `supabase/tests/local_harness.sql` → `supabase/migrations/*` → `supabase/seed.sql` (twice) → `supabase/tests/verify.sql` → `supabase/tests/verify_chat.sql` on any plain Postgres (see README)
-- Deploy target: Vercel (+ Supabase project; run `supabase/migrations/*` then `supabase/seed.sql` in the SQL Editor; set `COMMANDCODE_API_KEY` in Vercel env for Production/Preview/Development)
+- Deploy target: Vercel (+ Supabase project; run `supabase/migrations/*` then `supabase/seed.sql` in the SQL Editor; set `COMMANDCODE_API_KEY` in Vercel env for Production/Preview/Development; optional `DECISIONS_API_KEY` as the L1 backup)
 - Live URL: **https://banksim-uvce.vercel.app** (Vercel project `banksim-uvce`, Supabase project `banksim-uvce`, region Mumbai)
 
 ## Prompt conventions

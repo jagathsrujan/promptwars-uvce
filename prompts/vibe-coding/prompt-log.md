@@ -473,3 +473,26 @@ and anything else is also deepseek
 **Files touched:** `src/lib/firewall/l1.ts`, `.env.example`, `AGENTS.md`, `README.md`, `docs/abstract.md`, `docs/architecture-deck.md`, `prompts/vibe-coding/prompt-log.md`
 
 ---
+
+### 11. AI-judge score push (rank #12 → top 10) — 2026-10-11
+
+**Prompt:**
+
+```text
+i am currently rank 12 in the ai judging and ranking and this is all that is visible for me the ranking is done by hack2skill ai judge i think come up with ways and edits to increase my score
+```
+
+followed by the live score breakdown (94.88/100: Code Quality 86, Security 99, Efficiency 100, Testing 94, Accessibility 95, Alignment 97, one submission left), a higher-scoring rival repo (`https://github.com/bhargavabm/promptwars-uvce-2026`), the Hack2skill impact-tier guidance (High/Medium/Low), and `spin up subagents to do all these in parallel i have very less time fastup` / `continue the ones which were interupted`.
+
+**What it produced:** Five parallel subagents (quality / testing / accessibility / security / alignment) plus a main-loop finish pass:
+
+- **Hygiene (new files):** `LICENSE` (MIT), `SECURITY.md` (controls mapped to exact files, honest non-goals), `.github/workflows/ci.yml` (typecheck + tests + build on push/PR), `.nvmrc` (20), `package.json` metadata (description, license, repository, keywords, engines), security headers in `next.config.ts` (nosniff, DENY, strict referrer, permissions-policy).
+- **Accessibility:** skip-to-main link + `#main-content`, `nav aria-label="Primary"` + `aria-current="page"`, `role="dialog" aria-modal` on mobile nav + assistant panel, `aria-pressed` on deposit/withdraw, beneficiary-mode, card freeze, notification filters, password visibility; labelled selects/textarea in transfer form + firewall console; `focus-visible` rings on icon buttons and ghost buttons.
+- **Testing:** 72 → 111 unit tests (`npm test` green) — new `l1.test.ts` (16: parser valid/boundary/missing/out-of-range/doubly-wrapped + provider-preference + neither-key fail-closed), `l2.test.ts` (14: fenced/garbage/schema/clamping), `l3.test.ts` (9: empty/clean/hostile memo scan). No network in tests (stubbed fetch).
+- **L1 robustness fix (live-demo critical):** probed the provider `/systemone` with the real key (HTTP 200, clean jev probabilities) and restored dual-endpoint routing in `src/lib/firewall/l1.ts` — provider primary (`COMMANDCODE_API_KEY`, `typesafe/jev`, 3 s) with direct Decisions API backup (`DECISIONS_API_KEY`, server-side only, `typesafe/jev-1.13`, 10 s), provider always preferred, same questions/parser/thresholds on both paths. The working tree had required the direct key while Vercel only sets the provider key, which would have fail-closed all legit traffic live.
+- **Docs synced to code (no phantom claims):** README traceability table (PS-01…PS-05 → files → live routes), R01–R06 threat table with exact rule weights from `signatures.ts`, verbatim verdict JSON examples cross-checked against `BLOCK_EXPLANATIONS` and deck matrix rows 1/14/16; test counts 72→111 everywhere; L1 routing/latency wording corrected; `AGENTS.md` + `.env.example` mark `DECISIONS_API_KEY` as the optional backup. Deck typo fixed (`5\money` → `money`).
+- Verified: `npm run typecheck` clean, `npm test` 111/111 green, `npm run build` passes.
+
+**Files touched:** `LICENSE`, `SECURITY.md`, `.github/workflows/ci.yml`, `.nvmrc`, `package.json`, `next.config.ts`, `src/lib/firewall/l1.ts`, `l1.test.ts` / `l2.test.ts` / `l3.test.ts` (new), `src/components/**` (a11y labels/roles/focus), `src/app/not-found.tsx`, `.env.example`, `AGENTS.md`, `README.md`, `docs/abstract.md`, `docs/architecture-deck.md`, `prompts/vibe-coding/prompt-log.md`
+
+---

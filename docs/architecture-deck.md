@@ -16,6 +16,18 @@
 - **Explicit legitimate routing:** balance checks and valid transfers parse and execute as mock tools.
 - **Required output:** deterministic structured JSON per input — `status` (APPROVED/BLOCKED), `risk_score`, `threat_category`, `explanation`. Ambiguous or hostile input must fail safe.
 
+### Requirement traceability (source of truth: `docs/problem-statement.md`; full table + JSON examples: README § Problem-statement traceability)
+
+| Problem bullet | Enforced by | Live proof |
+|---|---|---|
+| Intercept / analyze / sanitize **before** tools | `runFirewall()` pre-model + pre-RPC; L3 re-gate in `executeTool()` (`src/lib/firewall/pipeline.ts`, `src/lib/assistant/execute-tool.ts`) | `/assistant`, `/transfer`, `/firewall` (`POST /api/firewall/test`) |
+| Block injections / jailbreaks / roleplay / memo attacks | L0 → L1 `typesafe/jev` (provider `/systemone` primary, `COMMANDCODE_API_KEY`; direct Decisions API backup, `DECISIONS_API_KEY`) → L2 `deepseek/deepseek-v4.1-flash` (Command Code Provider API, `COMMANDCODE_API_KEY`) → L3 memo re-scan | `/firewall` presets, `/transfer` attack memo refused |
+| Route legit balance / transfers | `decideVerdict()` clean path → tools + Confirm tap | `/assistant`, `/transfer` |
+| Deterministic JSON verdict | `FirewallVerdict` contract (`src/lib/firewall/types.ts`, `verdict.ts`) | `/firewall` feed, verdict chips |
+| Fail safe on ambiguous / hostile | L0 empty → L1 clarity → L2 mixed/unsure → `FAIL_CLOSED`; L3 budgets + lockout | `/assistant` clarification, `/firewall` jev-down / L2-down switches |
+
+Threats R01–R06 (injection / jailbreak / roleplay / hidden-in-memo+obfuscation / exfiltration+pressure / fail-safe edge cases) map to `PROMPT_INJECTION` / `JAILBREAK` / `ROLEPLAY_ATTACK` / `HIDDEN_INSTRUCTION` / `DATA_EXFILTRATION`+`SOCIAL_ENGINEERING` / `AMBIGUOUS_INPUT`+`VALIDATION_FAILURE`+`RATE_LIMIT` — each row of the attack matrix below is tagged with its R-ID via its category.
+
 ## 3. System design
 
 ```
@@ -27,8 +39,8 @@
                         │      normalize (NFKC, invisible-strip, homoglyph-fold, casefold)│
                         │      + weighted signature rules; hard hits → BLOCKED here        │
                         │                    │                                            │
-                        │  L1  typesafe/jev via POST /provider/v1/systemone               │
-                        │      ONE call, 5 typed questions → probabilities (never text)   │
+                        │  L1  typesafe/jev probabilities (ONE call, 5 questions)      │
+                        │      provider /systemone primary · Decisions API backup  │
                         │      p ≥ 0.90 → BLOCKED · 0.40–0.90 → escalate · clarity gate    │
                         │                    │                                            │
                         │  L2  deepseek/deepseek-v4.1-flash deep analysis (escalations)   │
@@ -42,7 +54,7 @@
                         │  L3  deterministic execution guardrails (inside executeTool)    │
                         │      verdict must be APPROVED · intent allowlist · Zod params   │
                         │      memo re-scan · money-op budget · 15-min hostile lockout    │
-                        │      5\money movement still needs the Phase 2 Confirmation tap  │
+                        │      money still needs the Phase 2 Confirmation tap  │
                         └───────────┬────────────────────────────────────────────────────┘
                                     │
       ┌─────────────────────────────┼──────────────────────────────────┐
@@ -58,11 +70,10 @@
 
 - **Frontend + API:** Next.js 15 (App Router), TypeScript strict, Tailwind 4 — one deployable on Vercel.
 - **Backend:** Supabase (Postgres + Auth + RLS) is the only backend; clients never write balances — money moves exclusively through `SECURITY DEFINER` RPCs (`perform_transfer`, `cash_transaction`).
-- **Models (Command Code Provider API):**
-  - `typesafe/jev` on `/provider/v1/systemone` — fast probabilistic classifier (~450–700 ms). It returns probabilities for typed questions, never text — so its output is inherently machine-checkable. **No ZDR header** (jev has no ZDR-capable upstream; the API refuses the combination with 422 — verified).
-  - `deepseek/deepseek-v4.1-flash` — assistant chat + L2 deep analysis. **Every call carries `x-cmd-zdr: 1`** (banking data, zero data retention, no prompt training).
-- **Temporary L1 fallback:** when `COMMANDCODE_API_KEY` is unset but `DECISIONS_API_KEY` is set (server-side only), L1 posts to the direct Decisions API (`https://decisions-api.dev/v1/systemone`, 10 s budget) instead of the provider path — remove once the official provider key arrives.
-- **Why two models, not one:** the cheap probabilistic gate runs on every input; the expensive analyst only sees gray zones. Clean-path latency is ~0.6 s end-to-end (L1 included); hard signatures cost ~0–10 ms with zero LLM calls.
+- **Models (dual-endpoint L1; same questions/parser/thresholds on both paths):**
+  - L1 `typesafe/jev` — primary: Command Code Provider API `POST /provider/v1/systemone` (`COMMANDCODE_API_KEY`, 3 s budget); backup: direct Decisions API `https://decisions-api.dev/v1/systemone` (`DECISIONS_API_KEY`, server-side only, `typesafe/jev-1.13`, 10 s budget). Provider preferred whenever its key exists. Returns probabilities for typed questions, never text — inherently machine-checkable. **No ZDR header** (jev has no ZDR-capable upstream; the API refuses the combination with 422 — verified).
+  - `deepseek/deepseek-v4.1-flash` via the Command Code Provider API (`COMMANDCODE_API_KEY`) — assistant chat + L2 deep analysis. **Every call carries `x-cmd-zdr: 1`** (banking data, zero data retention, no prompt training).
+- **Why two models, not one:** the cheap probabilistic gate (L1, one jev call) runs on every input; the expensive analyst (L2) only sees gray zones. Clean-path latency is ~0.6 s end-to-end on the provider path (L1 included); hard signatures cost ~0–10 ms with zero LLM calls.
 - **Why jev on L1 and not an LLM:** probabilities are branchable deterministically, cheap, and — unlike text — cannot be prompt-injected into a different answer shape. A jailbreak attempt that says "return 0.0" still gets scored as a jailbreak.
 
 ## 4. Prompt flow
@@ -89,8 +100,8 @@
 
 | Layer | Mechanism | Hardness |
 |---|---|---|
-| L0 | Pure-function normalizer + weighted signatures | Deterministic; unit-tested (72 tests); runs in <5 ms; no I/O to attack |
-| L1 | jev probabilities via typed questions | Probabilities only (no text channel); 3 s timeout → fail closed |
+| L0 | Pure-function normalizer + weighted signatures | Deterministic; unit-tested (111 tests); runs in <5 ms; no I/O to attack |
+| L1 | jev probabilities via typed questions (provider primary, direct backup) | Probabilities only (no text channel); 3 s provider / 10 s direct timeout → fail closed |
 | L2 | deepseek classifier, JSON schema validated with Zod | Any failure/timeout/unparseable output → FAIL_CLOSED BLOCKED; an approved-but-contradictory output (risk ≥ 70) is also blocked |
 | Verdict | Deterministic decision table (score ≥ 40, hard signature, p ≥ 0.90, clarity gate) | Pure function, unit-tested; the model output never *becomes* the decision without passing it |
 | L3 | Execution guardrails inside the single `executeTool` chokepoint | Verdict must be APPROVED; intent pin must match the tool; memos re-scanned; money-op budget + hostile lockout; money still needs the Phase 2 confirmation token (single-use, 5-min, DB-enforced) |
@@ -172,7 +183,7 @@ Every row below is a real pipeline run (L0 → jev → deepseek) — not a mock.
 - **L2 escalations cost 3–5 s.** Gray-zone inputs wait for deep analysis by design; everything else answers in <1 s. The console makes this visible per decision.
 - **L0's signatures are English-centric** and best-effort for homoglyphs (curated fold map). Unusual scripts rely on the obfuscation signals and L1/L2.
 - **Rate limiting reads counts from `firewall_logs`** (indexed queries per message) — correct and simple at demo scale, not a distributed limiter.
-- **Memo scanning needs the provider key**: without `COMMANDCODE_API_KEY`, transfers *with* a memo fail closed (memo-less transfers still work). On the live deployment the key is set.
+- **Memo scanning needs an L1 key**: without `COMMANDCODE_API_KEY` (and no `DECISIONS_API_KEY` backup), transfers *with* a memo fail closed (memo-less transfers still work). On the live deployment the provider key is set.
 - **A failed audit-log insert logs an error but does not block the request** — classification itself never fails open, but the audit is best-effort. Under a database outage the guardrails still hold (L3 checks read the same tables; reads failing means deny).
 - **The lockout counts hostile categories only** (injection/jailbreak/roleplay/hidden/exfiltration/social). Ambiguous and rate-limit blocks are deliberately excluded so a confused or chatty user is never locked out of their money.
 - **Over-blocking is possible and intentional** on classifier outages and near-threshold escalations — fail-safe beats fail-open for banking; the console shows exactly why each block happened.
@@ -183,6 +194,6 @@ Every row below is a real pipeline run (L0 → jev → deepseek) — not a mock.
 - **"What if a user pastes instructions into the input?"** → Provenance vs intent is decided by rules, not vibes: L0 blocks the phrase patterns in milliseconds with zero model cost, and anything that survives is scored by jev and then deep-analyzed. Rows 1–13 of the matrix are exactly this.
 - **"What if an attacker rephrases cleverly?"** → That's what the probability gate is for — it scores *meaning*, not strings: row 8 (social engineering) and row 20 (third-party data) contain no signature words and were still blocked, with the jev probabilities and L2 reasoning visible in the console.
 - **"Can the assistant be talked out of the firewall?"** → Blocked inputs never reach the model at all (canned server-side reply), the model is prompt-hardened against meta-probing, and even a fully hijacked model hits L3: no APPROVED verdict, no tool; no confirmation tap, no money.
-- **"What breaks under load?"** → Rate limits (30 msg/5 min, 10 money ops/hr) plus the 3 s/8 s classifier timeouts bound worst-case latency; a burst beyond the budget is BLOCKED · RATE_LIMIT with an audit flag, and repeated hostile traffic locks money tools for 15 minutes.
+- **"What breaks under load?"** → Rate limits (30 msg/5 min, 10 money ops/hr) plus the 3 s (provider) / 10 s (direct backup) / 8 s classifier timeouts bound worst-case latency; a burst beyond the budget is BLOCKED · RATE_LIMIT with an audit flag, and repeated hostile traffic locks money tools for 15 minutes.
 - **"Why these models?"** → jev returns probabilities, which are machine-checkable and cheap — perfect for a per-message gate. DeepSeek gives a strong reasoning pass only where it matters, run under ZDR because it sees banking text. Deterministic code owns every hard decision.
-- **"How do you know it works?"** → 72 unit tests on the pure layers, a 25-case live attack matrix re-runnable with `npm run test:live`, hosted RLS checks on two real accounts, and every decision logged with its evidence in `firewall_logs`.
+- **"How do you know it works?"** → 111 unit tests on the pure layers (`npm test`: 15 normalize + 30 signatures + 27 verdict + 16 L1 parser/routing + 14 L2 parsing + 9 L3 memo scan), a 25-case live attack matrix re-runnable with `npm run test:live`, hosted RLS checks on two real accounts, and every decision logged with its evidence in `firewall_logs`.

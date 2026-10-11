@@ -391,7 +391,7 @@ export function AssistantChat({
               type="button"
               onClick={() => stop()}
               aria-label="Stop generating"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 text-slate-500 transition hover:bg-slate-50"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 text-slate-500 transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-600"
             >
               <IconX className="h-4 w-4" />
             </button>
@@ -400,7 +400,7 @@ export function AssistantChat({
               type="submit"
               disabled={!input.trim()}
               aria-label="Send message"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-navy-900 text-white transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-navy-900 text-white transition hover:bg-navy-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-600 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <IconSend className="h-4 w-4" />
             </button>

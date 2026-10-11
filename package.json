@@ -2,6 +2,25 @@
   "name": "banksim",
   "version": "0.1.0",
   "private": true,
+  "description": "BankSim — Blue-Team AI Firewall: defensive firewall guarding a real banking ledger (Next.js + Supabase). L0 signatures, jev probabilities, deepseek analysis, execution guardrails; fail closed everywhere.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jagathsrujan/promptwars-uvce.git"
+  },
+  "keywords": [
+    "prompt-injection",
+    "jailbreak",
+    "roleplay-attack",
+    "ai-firewall",
+    "fintech",
+    "fail-closed",
+    "nextjs",
+    "supabase"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

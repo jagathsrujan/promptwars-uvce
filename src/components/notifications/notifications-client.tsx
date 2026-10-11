@@ -62,10 +62,11 @@ export function NotificationsClient({ notifications }: { notifications: Notifica
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex rounded-xl border border-slate-200 bg-white p-1 text-sm font-medium shadow-sm">
+        <div className="flex rounded-xl border border-slate-200 bg-white p-1 text-sm font-medium shadow-sm" role="group" aria-label="Filter notifications">
           <button
             type="button"
             onClick={() => setFilter("all")}
+            aria-pressed={filter === "all"}
             className={cn(
               "rounded-lg px-3.5 py-1.5 transition",
               filter === "all" ? "bg-navy-900 text-white" : "text-slate-600 hover:text-slate-900",
@@ -76,6 +77,7 @@ export function NotificationsClient({ notifications }: { notifications: Notifica
           <button
             type="button"
             onClick={() => setFilter("unread")}
+            aria-pressed={filter === "unread"}
             className={cn(
               "flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 transition",
               filter === "unread" ? "bg-navy-900 text-white" : "text-slate-600 hover:text-slate-900",

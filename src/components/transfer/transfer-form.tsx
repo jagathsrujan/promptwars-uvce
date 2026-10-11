@@ -313,6 +313,7 @@ export function TransferForm({
       <Field label="From account" htmlFor="fromAccount">
         <select
           id="fromAccount"
+          aria-label="Account to transfer from"
           value={fromId}
           onChange={(e) => setFromId(e.target.value)}
           className={inputClass}
@@ -340,6 +341,7 @@ export function TransferForm({
               <button
                 type="button"
                 onClick={() => setMode("beneficiary")}
+                aria-pressed={mode === "beneficiary"}
                 className={cn(
                   "rounded-md px-2.5 py-1 transition",
                   mode === "beneficiary" ? "bg-white text-navy-900 shadow-sm" : "text-slate-500 hover:text-slate-700",
@@ -350,6 +352,7 @@ export function TransferForm({
               <button
                 type="button"
                 onClick={() => setMode("new")}
+                aria-pressed={mode === "new"}
                 className={cn(
                   "rounded-md px-2.5 py-1 transition",
                   mode === "new" ? "bg-white text-navy-900 shadow-sm" : "text-slate-500 hover:text-slate-700",
@@ -364,6 +367,7 @@ export function TransferForm({
         {mode === "beneficiary" ? (
           <select
             id="beneficiary"
+            aria-label="Saved beneficiary to pay"
             value={beneficiaryId}
             onChange={(e) => setBeneficiaryId(e.target.value)}
             className={inputClass}

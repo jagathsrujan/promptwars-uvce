@@ -52,7 +52,7 @@ export function AppShell({
 
   function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
     return (
-      <nav className="flex-1 space-y-1 px-3">
+      <nav aria-label="Primary" className="flex-1 space-y-1 px-3">
         {NAV.map(({ href, label, Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
@@ -60,6 +60,7 @@ export function AppShell({
               key={href}
               href={href}
               onClick={onNavigate}
+              aria-current={active ? "page" : undefined}
               className={cn(
                 "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition",
                 active
@@ -105,6 +106,12 @@ export function AppShell({
 
   return (
     <div className="min-h-dvh bg-slate-50">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[70] focus:rounded-lg focus:bg-navy-900 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
+      >
+        Skip to main content
+      </a>
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-slate-200 bg-white lg:flex">
         <div className="flex items-center gap-2.5 px-6 py-5">
@@ -129,7 +136,9 @@ export function AppShell({
           type="button"
           onClick={() => setMobileOpen(true)}
           aria-label="Open navigation"
-          className="rounded-lg p-2 text-slate-600 transition hover:bg-slate-100"
+          aria-expanded={mobileOpen}
+          aria-controls="mobile-nav"
+          className="rounded-lg p-2 text-slate-600 transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-600"
         >
           <IconMenu className="h-5 w-5" />
         </button>
@@ -137,7 +146,7 @@ export function AppShell({
 
       {/* Mobile slide-over */}
       {mobileOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Site navigation" id="mobile-nav">
           <div
             className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
@@ -155,7 +164,7 @@ export function AppShell({
                 type="button"
                 onClick={() => setMobileOpen(false)}
                 aria-label="Close navigation"
-                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100"
+                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-600"
               >
                 <IconX className="h-5 w-5" />
               </button>
@@ -167,7 +176,7 @@ export function AppShell({
       ) : null}
 
       {/* Main content */}
-      <main className="lg:pl-64">
+      <main id="main-content" className="lg:pl-64" tabIndex={-1}>
         <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</div>
       </main>
 
