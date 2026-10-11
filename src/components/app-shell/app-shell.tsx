@@ -10,15 +10,18 @@ import {
   IconDashboard,
   IconMenu,
   IconSettings,
+  IconSparkles,
   IconStatement,
   IconTransfer,
   IconUsers,
   IconX,
 } from "@/components/icons";
 import { SignOutButton } from "@/components/app-shell/sign-out-button";
+import { AssistantPanel } from "@/components/assistant/assistant-panel";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", Icon: IconDashboard },
+  { href: "/assistant", label: "Assistant", Icon: IconSparkles },
   { href: "/transfer", label: "Transfer", Icon: IconTransfer },
   { href: "/transactions", label: "Transactions", Icon: IconStatement },
   { href: "/beneficiaries", label: "Beneficiaries", Icon: IconUsers },
@@ -37,6 +40,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
   const initials = user.name
     .split(/\s+/)
@@ -164,6 +168,18 @@ export function AppShell({
       <main className="lg:pl-64">
         <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</div>
       </main>
+
+      {/* Assistant — floating launcher + slide-in panel */}
+      <button
+        type="button"
+        onClick={() => setAssistantOpen(true)}
+        aria-label="Open BankSim Assistant"
+        className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-navy-900 py-3.5 pl-4 pr-5 text-sm font-semibold text-white shadow-lg shadow-navy-900/25 transition hover:bg-navy-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-600 sm:bottom-6 sm:right-6"
+      >
+        <IconSparkles className="h-5 w-5" />
+        <span className="hidden sm:inline">Assistant</span>
+      </button>
+      <AssistantPanel open={assistantOpen} onClose={() => setAssistantOpen(false)} />
     </div>
   );
 }

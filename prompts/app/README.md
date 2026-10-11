@@ -13,4 +13,5 @@ This directory holds the LLM configuration prompts that **ship inside the deploy
 
 | File | Role | Status |
 |---|---|---|
-| `system-prompt.md` | Main system prompt of the product | TBD — fill once the stack/problem approach is set |
+| `assistant-system-prompt.md` | System prompt of the BankSim Assistant (`/api/chat`, deepseek/deepseek-v4.1-flash, temperature 0.2) | **Active** — Phase 2, shipped |
+| `system-prompt.md` | Early placeholder for the product system prompt | Not used — superseded by `assistant-system-prompt.md` |

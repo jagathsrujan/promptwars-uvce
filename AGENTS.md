@@ -51,12 +51,12 @@ src/                 <- application code (stack-agnostic until chosen)
 
 > Fill this in the moment the stack is chosen, and keep it current. Agents rely on this to build/test.
 
-- Stack: Next.js 15 (App Router) + TypeScript (strict) + Tailwind CSS 4; Supabase (Postgres + Auth + RLS) as the only backend
+- Stack: Next.js 15 (App Router) + TypeScript (strict) + Tailwind CSS 4; Supabase (Postgres + Auth + RLS) as the only backend; Vercel AI SDK (`ai` + `@ai-sdk/openai-compatible`) calling the Command Code Provider API (`deepseek/deepseek-v4.1-flash`, server-side only in `/api/chat`, env `COMMANDCODE_API_KEY`)
 - Install: `npm install`
 - Run locally: `npm run dev` (needs `.env.local` — copy `.env.example`; see README)
 - Build: `npm run build` · Typecheck: `npm run typecheck`
-- SQL test suite: apply `supabase/tests/local_harness.sql` → `supabase/migrations/*` → `supabase/seed.sql` (twice) → `supabase/tests/verify.sql` on any plain Postgres (see README)
-- Deploy target: Vercel (+ Supabase project; run `supabase/migrations/*` then `supabase/seed.sql` in the SQL Editor)
+- SQL test suite: apply `supabase/tests/local_harness.sql` → `supabase/migrations/*` → `supabase/seed.sql` (twice) → `supabase/tests/verify.sql` → `supabase/tests/verify_chat.sql` on any plain Postgres (see README)
+- Deploy target: Vercel (+ Supabase project; run `supabase/migrations/*` then `supabase/seed.sql` in the SQL Editor; set `COMMANDCODE_API_KEY` in Vercel env for Production/Preview/Development)
 - Live URL: **https://banksim-uvce.vercel.app** (Vercel project `banksim-uvce`, Supabase project `banksim-uvce`, region Mumbai)
 
 ## Prompt conventions

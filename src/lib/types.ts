@@ -1,6 +1,8 @@
 // Hand-written mirror of the Supabase schema in supabase/migrations.
 // Keep in sync with the migrations — this is what makes every query typed.
 
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+
 export type AccountType = "CHECKING" | "SAVINGS";
 export type AccountStatus = "ACTIVE" | "FROZEN" | "CLOSED";
 export type TxnDirection = "CREDIT" | "DEBIT";
@@ -230,6 +232,57 @@ export type Database = {
         };
         Relationships: [];
       };
+      conversations: {
+        Row: {
+          id: string;
+          user_id: string;
+          title: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          title?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          title?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      chat_messages: {
+        Row: {
+          id: string;
+          conversation_id: string;
+          role: "user" | "assistant";
+          parts: Json;
+          client_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          conversation_id: string;
+          role: "user" | "assistant";
+          parts?: Json;
+          client_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          conversation_id?: string;
+          role?: "user" | "assistant";
+          parts?: Json;
+          client_id?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -251,6 +304,20 @@ export type Database = {
         };
         Returns: string;
       };
+      issue_confirmation_token: {
+        Args: {
+          p_tool_name: string;
+          p_params: Json;
+          p_conversation_id?: string | null;
+        };
+        Returns: Json;
+      };
+      redeem_confirmation_token: {
+        Args: {
+          p_token_id: string;
+        };
+        Returns: Json;
+      };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };
@@ -263,3 +330,5 @@ export type Beneficiary = Database["public"]["Tables"]["beneficiaries"]["Row"];
 export type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 export type Card = Database["public"]["Tables"]["cards"]["Row"];
 export type Notification = Database["public"]["Tables"]["notifications"]["Row"];
+export type Conversation = Database["public"]["Tables"]["conversations"]["Row"];
+export type ChatMessage = Database["public"]["Tables"]["chat_messages"]["Row"];
