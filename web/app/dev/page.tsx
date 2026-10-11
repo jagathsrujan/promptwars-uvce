@@ -63,10 +63,10 @@ function ZoneBadge({ verdict, mode }: { verdict: Verdict; mode: string }) {
     mode === "raw"
       ? "UNPROTECTED"
       : verdict.zone === "block"
-        ? `BLOCK · ${verdict.risk_score}`
+        ? `BLOCKED · risk ${verdict.risk_score}`
         : verdict.zone === "verify"
-          ? `VERIFY · ${verdict.risk_score}`
-          : `ALLOW · ${verdict.risk_score}`;
+          ? `VERIFY · risk ${verdict.risk_score}`
+          : `APPROVED · risk ${verdict.risk_score}`;
   return <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${zoneClasses(verdict.zone, mode)}`}>{label}</span>;
 }
 
@@ -119,7 +119,7 @@ export default function DevPanel() {
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
         <div className="flex items-center gap-3">
           <span className="text-sm font-bold text-white">/dev — decision observability</span>
-          <span className="text-[11px] text-slate-500">every prompt, vote, and verdict, live</span>
+          <span className="text-[11px] text-slate-400">every prompt, vote, and verdict, live</span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -143,7 +143,7 @@ export default function DevPanel() {
       {tab === "traces" && (
         <div className="grid gap-0 lg:grid-cols-[340px_1fr]">
           <div className="max-h-[calc(100vh-57px)] overflow-y-auto border-r border-slate-800">
-            {traces.length === 0 && <div className="p-4 text-xs text-slate-500">No traces yet — send a message from the portal. Traces live in this browser.</div>}
+            {traces.length === 0 && <div className="p-4 text-xs text-slate-400">No traces yet — send a message from the portal. Traces live in this browser.</div>}
             {traces.map((t) => (
               <button
                 key={t.id}
@@ -155,7 +155,7 @@ export default function DevPanel() {
                 }
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] text-slate-500">{new Date(t.ts).toLocaleTimeString("en-IN")}</span>
+                  <span className="text-[11px] text-slate-400">{new Date(t.ts).toLocaleTimeString("en-IN")}</span>
                   <span className="flex items-center gap-1.5">
                     <span className={`rounded px-1 py-0.5 text-[9px] font-bold ${t.mode === "raw" ? "bg-red-500/20 text-red-300" : "bg-blue-500/20 text-blue-300"}`}>
                       {t.mode}
@@ -164,7 +164,7 @@ export default function DevPanel() {
                   </span>
                 </div>
                 <div className="mt-1 truncate text-xs text-slate-300">{t.input}</div>
-                <div className="mt-0.5 text-[10px] text-slate-600">
+                <div className="mt-0.5 text-[10px] text-slate-400">
                   {t.id} · {t.totalMs}ms{t.memo ? " · memo attached" : ""}
                 </div>
               </button>
@@ -172,14 +172,14 @@ export default function DevPanel() {
           </div>
 
           <div className="max-h-[calc(100vh-57px)] overflow-y-auto p-4">
-            {!selected && <div className="text-xs text-slate-500">Select a trace.</div>}
+            {!selected && <div className="text-xs text-slate-400">Select a trace.</div>}
             {selected && (
               <div className="space-y-4">
                 <div className="rounded border border-slate-800 bg-slate-900 p-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-bold text-white">{selected.id}</span>
                     <ZoneBadge verdict={selected.verdict} mode={selected.mode} />
-                    <span className="text-[11px] text-slate-500">
+                    <span className="text-[11px] text-slate-400">
                       {selected.engine} · {selected.totalMs}ms
                     </span>
                   </div>
@@ -192,15 +192,15 @@ export default function DevPanel() {
                 </div>
 
                 <div className="rounded border border-slate-800 bg-slate-900 p-3">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">L0 · signals</div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">L0 · signals</div>
                   <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-[11px] leading-relaxed text-slate-300">
                     {JSON.stringify(selected.signals, null, 2)}
                   </pre>
                 </div>
 
                 <div className="rounded border border-slate-800 bg-slate-900 p-3">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">L1 · parallel checkers</div>
-                  {selected.checkers.length === 0 && <div className="mt-2 text-xs text-slate-500">no checkers ran (invalid input or raw mode)</div>}
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">L1 · parallel checkers</div>
+                  {selected.checkers.length === 0 && <div className="mt-2 text-xs text-slate-400">no checkers ran (invalid input or raw mode)</div>}
                   <div className="mt-2 space-y-2">
                     {selected.checkers.map((c) => (
                       <details key={c.checker} className="rounded border border-slate-800 bg-slate-950 p-2">
@@ -217,7 +217,7 @@ export default function DevPanel() {
                           {c.error && <span className="ml-2 text-red-400">{c.error}</span>}
                         </summary>
                         {c.evidence && <div className="mt-2 text-[11px] text-amber-300">evidence: “{c.evidence}”</div>}
-                        <div className="mt-2 text-[10px] text-slate-600">
+                        <div className="mt-2 text-[10px] text-slate-400">
                           {c.promptFile} @ {c.promptHash}
                         </div>
                         {c.raw && (
@@ -229,7 +229,7 @@ export default function DevPanel() {
                 </div>
 
                 <div className="rounded border border-slate-800 bg-slate-900 p-3">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">L2 · verdict</div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">L2 · verdict</div>
                   <div className="mt-2 text-xs">
                     <span className="font-bold text-white">{selected.verdict.decision}</span>
                     <span className="text-slate-400">
@@ -248,13 +248,13 @@ export default function DevPanel() {
                 </div>
 
                 <div className="rounded border border-slate-800 bg-slate-900 p-3">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">L3 · tool gate</div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">L3 · tool gate</div>
                   {selected.agent ? (
                     <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-[11px] text-slate-300">
                       {JSON.stringify(selected.agent, null, 2)}
                     </pre>
                   ) : (
-                    <div className="mt-2 text-xs text-slate-500">no agent outcome recorded</div>
+                    <div className="mt-2 text-xs text-slate-400">no agent outcome recorded</div>
                   )}
                 </div>
               </div>
@@ -275,11 +275,11 @@ export default function DevPanel() {
                 {f.name}
               </button>
             ))}
-            {prompts.length === 0 && <span className="text-xs text-slate-500">loading…</span>}
+            {prompts.length === 0 && <span className="text-xs text-slate-400">loading…</span>}
           </div>
           {prompts[promptTab] && (
             <div className="mt-4 rounded border border-slate-800 bg-slate-900 p-4">
-              <div className="text-[11px] text-slate-500">
+              <div className="text-[11px] text-slate-400">
                 {prompts[promptTab].name} · sha256 {prompts[promptTab].hash} · this is exactly what the model receives
               </div>
               <pre className="mt-3 whitespace-pre-wrap text-[12px] leading-relaxed text-slate-300">{prompts[promptTab].content}</pre>
