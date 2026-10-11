@@ -424,7 +424,21 @@ followed by `yes` (approve the plan and implement).
 
 ---
 
-### 8. Credit Codex + Claude as repo contributors — 2026-10-11
+### 8. README architecture flow diagrams — 2026-10-11
+
+**Prompt:**
+
+```text
+add detailed architecture flow diagrams to the readme
+```
+
+**What it produced:** New `Architecture flows` README section with five mermaid diagrams traced from the implementation (no invented steps): system overview (browser → Next.js routes → pipeline → Supabase); firewall pipeline decision tree with real thresholds (`p ≥ 0.90` block, `≥ 0.40` escalate, score `≥ 40`, clarity `≥ 0.50`, contradiction `≥ 70`, risk weights 40/35/30/20) and `decideVerdict()` order; chat sequence (firewall before model, blocked never reaches LLM, ambiguous tool-less, approved with tools ≤6 steps); transfer-form memo scan (refuse-before-RPC, budget, atomic `perform_transfer`); L3 guardrail chain inside `executeTool` (known tool → APPROVED → intent pin → memo re-scan → rate limit → Zod dispatch → confirm token → re-verified execution). Also linked the section in the Contents line. Thresholds verified against `src/lib/firewall/types.ts`.
+
+**Files touched:** `README.md`, `prompts/vibe-coding/prompt-log.md`
+
+---
+
+### 9. Credit Codex + Claude as repo contributors — 2026-10-11
 
 **Prompt:**
 
@@ -444,7 +458,7 @@ yes i want to see them here
 
 ---
 
-### 8. L1 direct on Decisions API, everything else on provider deepseek — 2026-10-11
+### 10. L1 direct on Decisions API, everything else on provider deepseek — 2026-10-11
 
 **Prompt:**
 

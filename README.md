@@ -8,7 +8,7 @@
 
 Keywords: prompt-injection, jailbreak, roleplay-attack, tool-calling guardrails, fail-closed, zero-trust, fintech, adversarial evaluation
 
-Contents: [Try it in 60 seconds](#try-it-in-60-seconds) · [What it is](#what-it-is) · [Rubric mapping](#how-it-maps-to-the-rubric-50-marks) · [Verification](#verification-not-just-claimed) · [Stack](#stack) · [Run & deploy](#run--deploy-details) · [Limitations](#limitations--scope)
+Contents: [Try it in 60 seconds](#try-it-in-60-seconds) · [What it is](#what-it-is) · [Architecture flows](#architecture-flows) · [Rubric mapping](#how-it-maps-to-the-rubric-50-marks) · [Verification](#verification-not-just-claimed) · [Stack](#stack) · [Run & deploy](#run--deploy-details) · [Limitations](#limitations--scope)
 
 ## Try it in 60 seconds
 
@@ -64,6 +64,153 @@ Intercepts, analyzes and sanitizes untrusted input (free-text requests, memos) b
 - Detects and blocks prompt injections, jailbreaks, roleplay attacks, and malicious instructions hidden in transaction memos; safely parses and routes legitimate banking requests (balance checks, valid transfers).
 - **Fail closed:** any classifier failure, timeout, or unparseable response → BLOCKED with `deciding_layer: FAIL_CLOSED`. Enforces strict guardrails so ambiguous or hostile inputs never compromise system safety.
 - Console at `/firewall`: verdict feed, attack presets, fail-closed simulation switches, per-decision input/verdict/signals/probabilities/reasoning/latency. Persisted to `firewall_logs`.
+
+## Architecture flows
+
+### System overview — one chokepoint, every input scanned
+
+```mermaid
+flowchart LR
+    subgraph Client["Browser"]
+        U["User"]
+    end
+    subgraph Next["Next.js 15 on Vercel"]
+        CHAT["/api/chat\nfirewall pre-model +\nmodel + tools"]
+        FORM["/transfer actions\nmemo scan before RPC"]
+        FW["/api/firewall/*\nconsole: feed, presets,\nsimulate jev/L2 down"]
+        ET["executeTool()\nsrc/lib/assistant/execute-tool.ts\nL3 gate + dispatch"]
+    end
+    subgraph FWPIPE["Firewall pipeline\nsrc/lib/firewall/pipeline.ts"]
+        L0["L0 signatures"]
+        L1["L1 typesafe/jev-1.13"]
+        L2["L2 deepseek deep analysis"]
+        V["verdict JSON"]
+    end
+    subgraph DB["Supabase Postgres + RLS"]
+        LEDGER[("accounts, ledgers,\nconfirmation_tokens")]
+        LOGS[("firewall_logs\naudit every decision")]
+    end
+    U --> CHAT & FORM & FW
+    CHAT --> L0
+    FORM --> L0
+    FW --> L0
+    L0 --> L1 --> L2 --> V
+    V --> ET
+    CHAT --> ET
+    ET --> LEDGER
+    CHAT & FORM & ET --> LOGS
+```
+
+Every untrusted input — chat message, transfer-form memo, console run, confirmed execution — flows through the same pipeline. There is exactly one path to every tool (`executeTool`) and every path goes through the firewall.
+
+### Firewall pipeline — L0 → L1 → L2 → verdict → L3
+
+Thresholds (`src/lib/firewall/types.ts`): hard-block `p ≥ 0.90` · escalate `p ≥ 0.40` · block score `≥ 40` · clarity `unclear ≥ 0.50` (messages only) · L2 contradiction `risk ≥ 70` → block. Risk = L0 weights + Σ(p × weight: override 40 / exfil 35 / roleplay 30 / pressure 20), clamped 0–100.
+
+```mermaid
+flowchart TD
+    IN["runFirewall({text, surface, kind})\nchat | memo | console"] --> L0
+    L0["L0 runL0(text)\nnormalize: NFKC, invisible-strip+count,\nhomoglyph-fold, casefold, squash spacing\n+ ~15 weighted signatures"] --> HARD{"hardBlocked\nor isEmpty?"}
+    HARD -- "yes → zero model cost" --> B0["BLOCKED / L0\nattack → topCategory\nempty → AMBIGUOUS_INPUT, risk 20"]
+    HARD -- "no" --> L1C["L1 callJev(normalized)\none call, 5 typed questions →\nprobabilities, never text"]
+    L1C --> JEVFAIL{"jev throw / timeout /\nunparseable / simulated?"}
+    JEVFAIL -- yes --> BF1["BLOCKED / FAIL_CLOSED\nrisk max(55, composite)\n+ classifier_unavailable"]
+    JEVFAIL -- no --> P90{"top hostile p ≥ 0.90?"}
+    P90 -- "yes, skip L2" --> B1["BLOCKED / L1\ncategory = argmax question"]
+    P90 -- no --> ESC{"escalationNeeded?\ntop p ≥ 0.40 OR l0.escalates\nOR composite risk ≥ 40"}
+    ESC -- no --> CLAR["clarity gate\nkind=message AND unclear ≥ 0.50?"]
+    CLAR -- yes --> BA["BLOCKED / L1 / AMBIGUOUS_INPUT"]
+    CLAR -- no --> A1["APPROVED / L1\nthreat NONE"]
+    ESC -- yes --> L2C["L2 callDeepAnalysis()\ndeepseek-v4.1-flash, temp 0.1\nclassify-never-follow, closed categories\nmixed → block whole, unsure → block"]
+    L2C --> L2FAIL{"l2 throw / timeout /\nunparseable / simulated?"}
+    L2FAIL -- yes --> BF2["BLOCKED / FAIL_CLOSED\n+ deep_analysis_unavailable"]
+    L2FAIL -- no --> L2S{"l2.status?"}
+    L2S -- BLOCKED --> B2["BLOCKED / L2\nl2 category + risk + explanation"]
+    L2S -- "APPROVED but risk ≥ 70" --> BC["BLOCKED / L2 / VALIDATION_FAILURE\ncontradictory approval"]
+    L2S -- "APPROVED, no sanitized_intent" --> BM["BLOCKED / L2 / AMBIGUOUS_INPUT"]
+    L2S -- "APPROVED + intent" --> A2["APPROVED / L2\n+ sanitized_intent pin"]
+    B0 & BF1 & B1 & BF2 & B2 & BC & BM & BA & A1 & A2 --> LOG["logDecision() → firewall_logs\ninput, verdict, signals,\nraw jev probs, L2 reasoning, latency"]
+    LOG --> L3NOTE["L3 runs later, inside executeTool\nat proposal AND execution time"]
+```
+
+`decideVerdict()` (`src/lib/firewall/verdict.ts`) evaluates in exactly this order: L0 hard → L0 empty → jev failure → L1 p ≥ 0.90 → L2 branches → clarity gate → approve. A model output never *becomes* the decision without passing the table.
+
+### Chat request — firewall runs before the model is touched
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant API as POST /api/chat
+    participant FW as runFirewall<br/>(surface=chat, kind=message)
+    participant DB as firewall_logs
+    participant LLM as deepseek-v4.1-flash
+    participant T as executeTool + L3
+    U->>API: message (30 msgs / 5 min budget)
+    API->>FW: text (slice 4000)
+    FW-->>API: verdict + latency
+    API->>DB: logDecision every verdict
+    alt BLOCKED, not ambiguous
+        API-->>U: stream data-firewall chip +<br/>one-sentence explanation — no model call
+    else BLOCKED AMBIGUOUS_INPUT
+        API->>LLM: streamText, NO tools,<br/>one clarifying question
+        LLM-->>U: clarification (tool-less)
+    else APPROVED
+        API->>LLM: streamText + tools<br/>(verdict attached, ≤6 steps)
+        LLM->>T: tool call under turn verdict
+        T-->>LLM: result or FIREWALL_BLOCKED
+        LLM-->>U: answer + verdict chip<br/>(data-* stripped before model)
+    end
+```
+
+Blocked inputs never reach a model — the refusal is streamed deterministically from the verdict, so there is nothing to negotiate with. `COMMANDCODE_API_KEY` stays server-side; `data-firewall` parts are stripped from model history.
+
+### Transfer form — memo scanned before money moves
+
+```mermaid
+flowchart TD
+    S["performTransferAction()\namount, fromAccount, toAccount(11-digit), memo"] --> M{"memo non-empty?"}
+    M -- no --> BUDGET
+    M -- yes --> SCAN["runFirewall({text: memo,\nsurface: memo, kind: memo})\nclarity gate skipped for memos"]
+    SCAN --> MB{"verdict?"}
+    MB -- BLOCKED --> REFUSE["return ok:false + explanation\n+ verdict JSON in form\nno ledger write, no balance drift"]
+    MB -- APPROVED --> BUDGET["checkMoneyAllowance()\n10 money ops/hr · hostile lockout"]
+    BUDGET --> BG{"allowed?"}
+    BG -- no --> REFUSE2["return ok:false + RATE_LIMIT verdict\nlogged with audit flag"]
+    BG -- yes --> RPC["rpc perform_transfer()\natomic: 2 ledger rows, 1 reference\nboth balances + both notifications\nor full rollback"]
+    RPC --> OK{"success?"}
+    OK -- no --> ERR["friendly error\ndeadlock-safe retry note"]
+    OK -- yes --> DONE["log executed transfer\nrevalidate + receipt + reference"]
+```
+
+The memo is part of the ledger (counterparty-visible), so an attack memo refuses the whole transfer — the memo never touches the ledger. The same money-op budget and hostile lockout apply to the form; there is no side door.
+
+### Tool execution — L3 guardrails inside the chokepoint
+
+```mermaid
+flowchart TD
+    CALL["executeTool(tool, params, ctx)\nctx carries turn verdict"] --> KNOWN{"known tool?"}
+    KNOWN -- no --> D0["deny VALIDATION_FAILURE, L3"]
+    KNOWN -- yes --> VOK{"verdict present\nAND APPROVED?"}
+    VOK -- no --> D1["deny FIREWALL_BLOCKED\ndeciding_layer FAIL_CLOSED"]
+    VOK -- yes --> PIN["intent-pin check\nsanitized_intent must match tool family\nBALANCE_CHECK / TRANSACTION_HISTORY /\nTRANSFER / DEPOSIT / WITHDRAW /\nADD_BENEFICIARY / SET_CARD_STATUS"]
+    PIN -- mismatch --> D2["deny VALIDATION_FAILURE\nrule intent_mismatch"]
+    PIN -- match --> MEMO{"params.memo?"}
+    MEMO -- "non-empty → runL0" --> MH{"hard hit or weight ≥ 25?"}
+    MH -- yes --> D3["deny HIDDEN_INSTRUCTION, L3\nrisk max(70, contribution)"]
+    MH -- no --> MONEY
+    MEMO -- empty --> MONEY{"money tool?"}
+    MONEY -- "yes → getRateLimitState()\nfrom firewall_logs" --> RL{"locked / over budget?"}
+    RL -- yes --> D4["deny RATE_LIMIT + audit flag\n5 hostile/10min → 15min money lockout\nread-only chat preserved"]
+    RL -- no --> DISP["dispatch: Zod-validate params\nread tools run directly"]
+    MONEY -- "read tool" --> DISP
+    DISP --> CG{"confirmation-gated?"}
+    CG -- "no (read)" --> RES["result"]
+    CG -- "money/account, unconfirmed" --> PROP["propose: rpc issue_confirmation_token\nsingle-use, 5-min, user+tool+params bound\nreturn confirmation card"]
+    PROP -- "user taps Confirm" --> RE["redeem → executeTool(confirmed:true)\nL3 re-runs incl. memo re-scan"]
+    RE --> EXE["execute RPC\nlog executed:true to firewall_logs"]
+```
+
+APPROVED is necessary but never sufficient for money: the human Confirm tap is still required, and the memo is re-scanned at proposal *and* execution. Unknown tools, missing verdicts, intent mismatches, and over-budget calls are all denied by deterministic code — a fully hijacked model cannot move money.
 
 ## How it maps to the rubric (50 marks)
 
